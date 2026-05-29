@@ -1,0 +1,24 @@
+{
+  "entities": {
+    "SchoolEvent": {
+      "title": "School Event",
+      "description": "An event on the school calendar.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "timestamp" },
+        "authorId": { "type": "string" },
+        "createdAt": { "type": "timestamp" },
+        "isPublic": { "type": "boolean" }
+      },
+      "required": ["title", "date", "authorId", "createdAt", "isPublic"]
+    }
+  },
+  "firestore": {
+    "/events/{eventId}": {
+      "schema": { "$ref": "#/entities/SchoolEvent" },
+      "description": "Collection of school events."
+    }
+  }
+}
