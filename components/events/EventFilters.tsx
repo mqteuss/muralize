@@ -1,6 +1,6 @@
 import { ArrowDownUp, LayoutGrid, List } from 'lucide-react';
 
-export type EventFilterType = 'all' | 'today' | 'week' | 'month' | 'past';
+export type EventFilterType = 'all' | 'today' | 'week' | 'month' | 'past' | 'hidden';
 
 interface Props {
   filterType: EventFilterType;
@@ -10,17 +10,19 @@ interface Props {
   setSortOrder: (order: 'asc' | 'desc') => void;
   layoutView: 'grid' | 'list';
   setLayoutView: (view: 'grid' | 'list') => void;
+  showHiddenFilter?: boolean;
 }
 
 export function EventFilters({
   filterType, setFilterType, filteredCount,
-  sortOrder, setSortOrder, layoutView, setLayoutView
+  sortOrder, setSortOrder, layoutView, setLayoutView, showHiddenFilter = false
 }: Props) {
   const filters: { id: EventFilterType; label: string }[] = [
     { id: 'all', label: 'Próximos' },
     { id: 'today', label: 'Hoje' },
     { id: 'week', label: 'Esta Semana' },
     { id: 'month', label: 'Este Mês' },
+    ...(showHiddenFilter ? [{ id: 'hidden' as EventFilterType, label: 'Rascunhos' }] : []),
     { id: 'past', label: 'Finalizados' }
   ];
 
