@@ -1,0 +1,49 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidSchoolEvent(data) {
+      return data.keys().hasAll(['title', 'date', 'authorId', 'createdAt', 'isPublic']) &&
+      data.keys().hasOnly(['title', 'description', 'category', 'date', 'authorId', 'createdAt', 'updatedAt', 'isPublic']) &&
+      data.title is string &&
+      data.title.size() > 0 &&
+      data.title.size() <= 100 &&
+      (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
+      (!('category' in data) || (data.category is string && data.category.size() <= 50)) &&
+      data.date is timestamp &&
+      data.authorId == request.auth.uid &&
+      data.createdAt is timestamp &&
+      (!('updatedAt' in data) || data.updatedAt is timestamp) &&
+      data.isPublic is bool;
+    }
+
+    match /events/{eventId} {
+      allow read: if isAdmin() || resource.data.isPublic == true;
+      allow create: if isAdmin() && isValidId(eventId) && isValidSchoolEvent(request.resource.data);
+      allow update: if isAdmin() && isValidId(eventId) && isValidSchoolEvent(request.resource.data);
+      allow delete: if isAdmin() && isValidId(eventId);
+    }
+
+    match /admins/{userId} {
+      allow read: if request.auth.uid == userId || isAdmin();
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
