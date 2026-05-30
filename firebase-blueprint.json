@@ -7,9 +7,11 @@
       "properties": {
         "title": { "type": "string" },
         "description": { "type": "string" },
+        "category": { "type": "string" },
         "date": { "type": "timestamp" },
         "authorId": { "type": "string" },
         "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" },
         "isPublic": { "type": "boolean" }
       },
       "required": ["title", "date", "authorId", "createdAt", "isPublic"]
@@ -18,7 +20,7 @@
   "firestore": {
     "/events/{eventId}": {
       "schema": { "$ref": "#/entities/SchoolEvent" },
-      "description": "Collection of school events."
+      "description": "Collection of school events, including public events and admin-only drafts."
     }
   }
 }
