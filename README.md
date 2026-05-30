@@ -1,13 +1,14 @@
-# Mural da Escola
+# Muralize
 
-Aplicativo web em Next.js para publicar e consultar eventos escolares como provas, reuniões, entregas e avisos importantes.
+Aplicativo web em Next.js para publicar e consultar eventos escolares, como provas, reuniões, entregas e avisos importantes.
 
 ## Stack
 
-- Next.js 15
+- Next.js 16
 - React 19
-- Firebase Auth
-- Firestore
+- Supabase Auth
+- Supabase Postgres
+- Supabase Realtime
 - Tailwind CSS 4
 - Motion
 - Lucide React
@@ -15,28 +16,51 @@ Aplicativo web em Next.js para publicar e consultar eventos escolares como prova
 ## Funcionalidades
 
 - Mural público de eventos.
-- Login com Google para administração.
+- Login com Google via Supabase Auth.
 - Criação e exclusão de eventos apenas pelo e-mail admin configurado.
 - Busca por título e descrição.
 - Filtros por hoje, semana e mês.
+- Cards de resumo para eventos publicados, próximo aviso e nível de permissão.
+- Aviso visual quando uma conta logada não é admin.
 - Notificações locais no navegador para eventos próximos.
 - Layout responsivo com modal estilo bottom sheet no mobile.
 
-## Configuração do admin
+## Variáveis de ambiente
 
-Por padrão, o administrador é:
+Crie no `.env.local` e também configure na Vercel:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-anon-key
+NEXT_PUBLIC_ADMIN_EMAIL=mh.umateus@gmail.com
+```
+
+## Configuração do Supabase
+
+1. Crie um projeto no Supabase.
+2. Vá em `SQL Editor`.
+3. Execute o arquivo `supabase/schema.sql`.
+4. Vá em `Authentication > Providers` e ative Google.
+5. Em `Authentication > URL Configuration`, configure:
+
+```txt
+Site URL: https://muralize.vercel.app
+Redirect URLs:
+https://muralize.vercel.app/**
+http://localhost:3000/**
+```
+
+6. Em `Database > Replication`, habilite Realtime para a tabela `events` se quiser atualização instantânea entre dispositivos.
+
+## Admin
+
+O admin padrão é:
 
 ```txt
 mh.umateus@gmail.com
 ```
 
-Para trocar no frontend, crie um arquivo `.env.local`:
-
-```env
-NEXT_PUBLIC_ADMIN_EMAIL=seu-email@gmail.com
-```
-
-Atenção: também troque o e-mail em `firestore.rules`, porque a proteção real fica nas regras do Firestore.
+Para trocar, altere `NEXT_PUBLIC_ADMIN_EMAIL` e também o e-mail nas policies do arquivo `supabase/schema.sql` antes de executar no Supabase.
 
 ## Rodar localmente
 
@@ -54,27 +78,6 @@ npm run build
 npm run start
 ```
 
-## Firestore
+## Deploy na Vercel
 
-A coleção usada é:
-
-```txt
-events
-```
-
-Campos esperados:
-
-```ts
-title: string
-description: string
-date: Timestamp
-authorId: string
-createdAt: Timestamp
-isPublic: boolean
-```
-
-As regras em `firestore.rules` permitem leitura pública apenas de eventos com `isPublic == true` e restringem escrita ao admin.
-
-## Observação sobre notificações
-
-As notificações atuais são locais do navegador. Elas funcionam melhor com o site aberto ou em segundo plano pelo navegador. Para notificações reais com app fechado, implemente Firebase Cloud Messaging com Service Worker.
+Configure as variáveis de ambiente na Vercel e faça redeploy. O projeto usa `vercel.json` para instalar dependências pelo npm público.
