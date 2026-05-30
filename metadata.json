@@ -1,6 +1,0 @@
-{
-  "name": "Mural da Escola",
-  "description": "Calendário e lembretes escolares com mural público e administração via Google Auth.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
-}
