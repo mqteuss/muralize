@@ -5,7 +5,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import { useAuth } from '@/components/AuthProvider';
 import { createEvent, deleteEvent, SchoolEvent, subscribeToEvents } from '@/lib/events';
 import { useNotifications } from '@/hooks/useNotifications';
-import { ADMIN_EMAIL, FILTERS, FilterType } from '@/lib/constants';
+import { FILTERS, FilterType, isAdminEmail } from '@/lib/constants';
 import {
   format,
   formatDistanceToNow,
@@ -76,7 +76,7 @@ export default function Home() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [notificationsSupported, setNotificationsSupported] = useState(false);
 
-  const isAdmin = user?.email === ADMIN_EMAIL;
+  const isAdmin = isAdminEmail(user?.email);
 
   const showToast = useCallback((nextToast: NonNullable<ToastState>) => {
     setToast(nextToast);
@@ -145,6 +145,8 @@ export default function Home() {
       return true;
     });
   }, [deferredSearchQuery, events, filterType]);
+
+  const nextEvent = useMemo(() => events.find((eventItem) => !isPast(eventItem.date)), [events]);
 
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -247,9 +249,10 @@ export default function Home() {
                 onClick={() => setIsLogoutModalOpen(true)}
                 className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-[#49454F] transition-colors hover:bg-[#F4EFF4] focus:outline-none focus:ring-2 focus:ring-[#1D1B20]/20 sm:px-4"
                 aria-label="Sair da conta"
+                title={isAdmin ? 'Admin conectado' : 'Conta conectada'}
               >
                 <LogOut className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Sair</span>
+                <span className="hidden sm:inline">{isAdmin ? 'Admin' : 'Sair'}</span>
               </button>
             ) : (
               <button
@@ -289,6 +292,18 @@ export default function Home() {
             )}
           </div>
         </section>
+
+        <section className="mb-8 grid gap-3 sm:grid-cols-3">
+          <InfoCard label="Eventos publicados" value={String(events.length)} />
+          <InfoCard label="Próximo aviso" value={nextEvent ? getRelativeTimeText(nextEvent.date) : 'Nenhum'} />
+          <InfoCard label="Permissão" value={isAdmin ? 'Admin' : user ? 'Leitor' : 'Visitante'} />
+        </section>
+
+        {user && !isAdmin && (
+          <div className="mb-6 rounded-3xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+            Você entrou com <strong>{user.email}</strong>, mas essa conta não está cadastrada como administradora.
+          </div>
+        )}
 
         <section className="mb-8 flex flex-col gap-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -591,6 +606,15 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-3xl border border-[#CAC4D0]/40 bg-white px-4 py-3 shadow-sm">
+      <p className="text-xs font-medium text-[#49454F]">{label}</p>
+      <p className="mt-1 truncate text-lg font-semibold text-[#1D1B20]">{value}</p>
     </div>
   );
 }
