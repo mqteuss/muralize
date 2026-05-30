@@ -1,5 +1,17 @@
-import { collection, doc, onSnapshot, query, setDoc, deleteDoc, Timestamp, orderBy, limit, where } from 'firebase/firestore';
-import { db, auth } from './firebase';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  Timestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
+import { auth, db } from './firebase';
 
 export interface SchoolEvent {
   id: string;
@@ -8,41 +20,9 @@ export interface SchoolEvent {
   date: Date;
   authorId: string;
   createdAt: Date;
+  updatedAt?: Date;
   isPublic: boolean;
   category?: string;
-}
-
-const EVENTS_PATH = 'events';
-
-export function subscribeToEvents(isAdmin: boolean, onUpdate: (events: SchoolEvent[]) => void, onError: (err: Error) => void) {
-  const constraints = [];
-  if (!isAdmin) {
-    constraints.push(where('isPublic', '==', true));
-  }
-  constraints.push(orderBy('date', 'asc'));
-  constraints.push(limit(50));
-
-  const q = query(collection(db, EVENTS_PATH), ...constraints);
-
-  return onSnapshot(q, (snapshot) => {
-    const events: SchoolEvent[] = [];
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      events.push({
-        id: doc.id,
-        title: data.title,
-        description: data.description,
-        category: data.category,
-        date: data.date.toDate(),
-        authorId: data.authorId,
-        createdAt: data.createdAt.toDate(),
-        isPublic: data.isPublic,
-      });
-    });
-    onUpdate(events);
-  }, (error) => {
-    onError(error instanceof Error ? error : new Error(String(error)));
-  });
 }
 
 export interface CreateSchoolEventInput {
@@ -53,22 +33,101 @@ export interface CreateSchoolEventInput {
   isPublic?: boolean;
 }
 
-export async function createEvent(id: string, event: CreateSchoolEventInput) {
-  if (!auth.currentUser) throw new Error('Not authenticated');
-  
-  const eventDoc = doc(db, EVENTS_PATH, id);
-  await setDoc(eventDoc, {
-    title: event.title,
-    description: event.description || '',
-    category: event.category || '',
+export type UpdateSchoolEventInput = CreateSchoolEventInput;
+
+const EVENTS_PATH = 'events';
+const MAX_EVENTS = 100;
+
+function toDate(value: unknown): Date {
+  if (value instanceof Timestamp) return value.toDate();
+  if (value instanceof Date) return value;
+  if (typeof value === 'string' || typeof value === 'number') return new Date(value);
+  return new Date();
+}
+
+export function subscribeToEvents(
+  isAdmin: boolean,
+  onUpdate: (events: SchoolEvent[]) => void,
+  onError: (err: Error) => void,
+) {
+  const constraints = [];
+
+  if (!isAdmin) {
+    constraints.push(where('isPublic', '==', true));
+  }
+
+  constraints.push(orderBy('date', 'asc'));
+  constraints.push(limit(MAX_EVENTS));
+
+  const eventsQuery = query(collection(db, EVENTS_PATH), ...constraints);
+
+  return onSnapshot(
+    eventsQuery,
+    snapshot => {
+      const events: SchoolEvent[] = [];
+
+      snapshot.forEach(document => {
+        const data = document.data();
+
+        events.push({
+          id: document.id,
+          title: data.title ?? '',
+          description: data.description ?? '',
+          category: data.category ?? '',
+          date: toDate(data.date),
+          authorId: data.authorId ?? '',
+          createdAt: toDate(data.createdAt),
+          updatedAt: data.updatedAt ? toDate(data.updatedAt) : undefined,
+          isPublic: data.isPublic !== false,
+        });
+      });
+
+      onUpdate(events);
+    },
+    error => {
+      onError(error instanceof Error ? error : new Error(String(error)));
+    },
+  );
+}
+
+function requireCurrentUser() {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+  return user;
+}
+
+function sanitizeEventInput(event: CreateSchoolEventInput) {
+  return {
+    title: event.title.trim(),
+    description: event.description?.trim() || '',
+    category: event.category?.trim() || '',
     date: Timestamp.fromDate(event.date),
-    authorId: auth.currentUser.uid,
+    isPublic: event.isPublic !== false,
+  };
+}
+
+export async function createEvent(id: string, event: CreateSchoolEventInput) {
+  const user = requireCurrentUser();
+  const eventDocument = doc(db, EVENTS_PATH, id);
+
+  await setDoc(eventDocument, {
+    ...sanitizeEventInput(event),
+    authorId: user.uid,
     createdAt: Timestamp.now(),
-    isPublic: event.isPublic !== undefined ? event.isPublic : true,
+  });
+}
+
+export async function updateEvent(id: string, event: UpdateSchoolEventInput) {
+  requireCurrentUser();
+  const eventDocument = doc(db, EVENTS_PATH, id);
+
+  await updateDoc(eventDocument, {
+    ...sanitizeEventInput(event),
+    updatedAt: Timestamp.now(),
   });
 }
 
 export async function deleteEvent(id: string) {
-  if (!auth.currentUser) throw new Error('Not authenticated');
+  requireCurrentUser();
   await deleteDoc(doc(db, EVENTS_PATH, id));
 }
