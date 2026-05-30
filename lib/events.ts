@@ -1,5 +1,4 @@
-import { collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, Timestamp, where } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { supabase } from './supabase';
 
 export interface SchoolEvent {
   id: string;
@@ -11,7 +10,16 @@ export interface SchoolEvent {
   isPublic: boolean;
 }
 
-const EVENTS_PATH = 'events';
+type EventRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  date: string;
+  author_id: string;
+  created_at: string;
+  is_public: boolean;
+};
+
 const MAX_TITLE_LENGTH = 100;
 const MAX_DESCRIPTION_LENGTH = 500;
 
@@ -19,47 +27,78 @@ function normalizeText(value: string, maxLength: number) {
   return value.trim().replace(/\s+/g, ' ').slice(0, maxLength);
 }
 
-function mapSchoolEvent(id: string, data: Record<string, unknown>): SchoolEvent | null {
-  const title = typeof data.title === 'string' ? data.title : '';
-  const description = typeof data.description === 'string' ? data.description : '';
-  const date = data.date instanceof Timestamp ? data.date.toDate() : null;
-  const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : null;
-  const authorId = typeof data.authorId === 'string' ? data.authorId : '';
-  const isPublic = typeof data.isPublic === 'boolean' ? data.isPublic : false;
+function mapSchoolEvent(row: EventRow): SchoolEvent | null {
+  const date = new Date(row.date);
+  const createdAt = new Date(row.created_at);
 
-  if (!title || !date || !createdAt || !authorId) return null;
+  if (!row.id || !row.title || Number.isNaN(date.getTime()) || Number.isNaN(createdAt.getTime())) {
+    return null;
+  }
 
   return {
-    id,
-    title,
-    description,
+    id: row.id,
+    title: row.title,
+    description: row.description ?? '',
     date,
-    authorId,
+    authorId: row.author_id,
     createdAt,
-    isPublic,
+    isPublic: row.is_public,
   };
 }
 
+async function fetchPublicEvents() {
+  const { data, error } = await supabase
+    .from('events')
+    .select('id,title,description,date,author_id,created_at,is_public')
+    .eq('is_public', true)
+    .order('date', { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? [])
+    .map((item) => mapSchoolEvent(item as EventRow))
+    .filter((event): event is SchoolEvent => event !== null);
+}
+
 export function subscribeToEvents(onUpdate: (events: SchoolEvent[]) => void, onError: (err: Error) => void) {
-  const eventsQuery = query(
-    collection(db, EVENTS_PATH),
-    where('isPublic', '==', true),
-    orderBy('date', 'asc'),
-  );
+  let isActive = true;
 
-  return onSnapshot(eventsQuery, (snapshot) => {
-    const events = snapshot.docs
-      .map((item) => mapSchoolEvent(item.id, item.data()))
-      .filter((event): event is SchoolEvent => event !== null);
+  fetchPublicEvents()
+    .then((events) => {
+      if (isActive) onUpdate(events);
+    })
+    .catch((error) => {
+      if (isActive) onError(error instanceof Error ? error : new Error(String(error)));
+    });
 
-    onUpdate(events);
-  }, (error) => {
-    onError(error instanceof Error ? error : new Error(String(error)));
-  });
+  const channel = supabase
+    .channel('public-events')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'events' },
+      () => {
+        fetchPublicEvents()
+          .then((events) => {
+            if (isActive) onUpdate(events);
+          })
+          .catch((error) => {
+            if (isActive) onError(error instanceof Error ? error : new Error(String(error)));
+          });
+      },
+    )
+    .subscribe();
+
+  return () => {
+    isActive = false;
+    supabase.removeChannel(channel);
+  };
 }
 
 export async function createEvent(id: string, title: string, description: string, date: Date) {
-  if (!auth.currentUser) throw new Error('Você precisa estar logado para criar eventos.');
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError) throw sessionError;
+  if (!sessionData.session?.user) throw new Error('Você precisa estar logado para criar eventos.');
 
   const normalizedTitle = normalizeText(title, MAX_TITLE_LENGTH);
   const normalizedDescription = normalizeText(description, MAX_DESCRIPTION_LENGTH);
@@ -67,17 +106,24 @@ export async function createEvent(id: string, title: string, description: string
   if (!normalizedTitle) throw new Error('Informe um título para o evento.');
   if (Number.isNaN(date.getTime())) throw new Error('Informe uma data e hora válidas.');
 
-  await setDoc(doc(db, EVENTS_PATH, id), {
+  const { error } = await supabase.from('events').insert({
+    id,
     title: normalizedTitle,
     description: normalizedDescription,
-    date: Timestamp.fromDate(date),
-    authorId: auth.currentUser.uid,
-    createdAt: Timestamp.now(),
-    isPublic: true,
+    date: date.toISOString(),
+    author_id: sessionData.session.user.id,
+    is_public: true,
   });
+
+  if (error) throw error;
 }
 
 export async function deleteEvent(id: string) {
-  if (!auth.currentUser) throw new Error('Você precisa estar logado para excluir eventos.');
-  await deleteDoc(doc(db, EVENTS_PATH, id));
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError) throw sessionError;
+  if (!sessionData.session?.user) throw new Error('Você precisa estar logado para excluir eventos.');
+
+  const { error } = await supabase.from('events').delete().eq('id', id);
+  if (error) throw error;
 }
