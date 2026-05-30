@@ -24,7 +24,7 @@ service cloud.firestore {
       (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
       (!('category' in data) || (data.category is string && data.category.size() <= 50)) &&
       data.date is timestamp &&
-      data.authorId == request.auth.uid &&
+      data.authorId is string &&
       data.createdAt is timestamp &&
       (!('updatedAt' in data) || data.updatedAt is timestamp) &&
       data.isPublic is bool;
@@ -32,13 +32,20 @@ service cloud.firestore {
 
     match /events/{eventId} {
       allow read: if isAdmin() || resource.data.isPublic == true;
-      allow create: if isAdmin() && isValidId(eventId) && isValidSchoolEvent(request.resource.data);
-      allow update: if isAdmin() && isValidId(eventId) && isValidSchoolEvent(request.resource.data);
+      allow create: if isAdmin()
+        && isValidId(eventId)
+        && isValidSchoolEvent(request.resource.data)
+        && request.resource.data.authorId == request.auth.uid;
+      allow update: if isAdmin()
+        && isValidId(eventId)
+        && isValidSchoolEvent(request.resource.data)
+        && request.resource.data.authorId == resource.data.authorId
+        && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isAdmin() && isValidId(eventId);
     }
 
     match /admins/{userId} {
-      allow read: if request.auth.uid == userId || isAdmin();
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow write: if false;
     }
 
