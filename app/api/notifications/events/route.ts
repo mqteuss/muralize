@@ -6,6 +6,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type NotificationAction = 'created' | 'updated';
+type DirectNotificationType = 'created' | 'published' | 'priority_up' | 'rescheduled';
 type Priority = 'normal' | 'importante' | 'urgente';
 
 interface EventSnapshot {
@@ -24,6 +25,16 @@ interface RequestBody {
   eventId?: string;
   action?: NotificationAction;
   previousEvent?: EventSnapshot | null;
+  type?: DirectNotificationType;
+  event?: EventSnapshot;
+  dedupeKey?: string;
+}
+
+interface BuiltNotification {
+  reason: string;
+  logId: string;
+  title: string;
+  body: string;
 }
 
 function json(data: unknown, status = 200) {
@@ -71,7 +82,7 @@ function normalizePriority(value: unknown): Priority {
   return 'normal';
 }
 
-function buildNotification(action: NotificationAction, event: EventSnapshot, previousEvent?: EventSnapshot | null) {
+function buildNotification(action: NotificationAction, event: EventSnapshot, previousEvent?: EventSnapshot | null): BuiltNotification | null {
   if (event.deletedAt) return null;
   if (event.isPublic !== true) return null;
 
@@ -126,6 +137,55 @@ function buildNotification(action: NotificationAction, event: EventSnapshot, pre
   return null;
 }
 
+function buildDirectNotification(type: DirectNotificationType, event: EventSnapshot, dedupeKey?: string): BuiltNotification | null {
+  if (!event.id) return null;
+  if (event.deletedAt) return null;
+  if (event.isPublic !== true) return null;
+
+  const eventTitle = event.title || 'Evento no Muralize';
+  const description = event.description || event.category || 'Confira os detalhes no Muralize.';
+  const priority = normalizePriority(event.priority);
+  const dateSuffix = event.date ? ` • ${formatDate(event.date)}` : '';
+
+  if (type === 'created') {
+    return {
+      reason: 'created',
+      logId: dedupeKey || `created-${event.id}`,
+      title: 'Novo evento no Muralize',
+      body: `${eventTitle}${dateSuffix}`,
+    };
+  }
+
+  if (type === 'published') {
+    return {
+      reason: 'published',
+      logId: dedupeKey || `published-${event.id}-${toMillis(event.date)}`,
+      title: 'Evento publicado no Muralize',
+      body: `${eventTitle}${dateSuffix}`,
+    };
+  }
+
+  if (type === 'priority_up') {
+    return {
+      reason: 'priority',
+      logId: dedupeKey || `priority-${event.id}-${priority}-${toMillis(event.date)}`,
+      title: priority === 'urgente' ? 'Evento urgente no Muralize' : 'Evento importante no Muralize',
+      body: `${eventTitle}: ${description}`,
+    };
+  }
+
+  if (type === 'rescheduled') {
+    return {
+      reason: 'rescheduled',
+      logId: dedupeKey || `rescheduled-${event.id}-${toMillis(event.date)}`,
+      title: 'Evento atualizado no Muralize',
+      body: `${eventTitle} agora está para ${formatDate(event.date)}.`,
+    };
+  }
+
+  return null;
+}
+
 async function assertAdmin(uid: string) {
   const adminDoc = await adminDb.collection('admins').doc(uid).get();
   return adminDoc.exists;
@@ -154,9 +214,7 @@ async function markNotificationLog(logId: string, data: Record<string, unknown>)
   const ref = adminDb.collection('notificationLogs').doc(logId);
   const existing = await ref.get();
 
-  if (existing.exists) {
-    return false;
-  }
+  if (existing.exists) return false;
 
   await ref.set({
     ...data,
@@ -186,21 +244,34 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as RequestBody;
-    const eventId = body.eventId;
-    const action = body.action;
+    let eventId = body.eventId;
+    let action: NotificationAction | undefined = body.action;
+    let event: EventSnapshot | null = null;
+    let notification: BuiltNotification | null = null;
 
-    if (!eventId || (action !== 'created' && action !== 'updated')) {
+    if (body.type && body.event?.id) {
+      eventId = body.event.id;
+      action = body.type === 'created' ? 'created' : 'updated';
+      event = { id: body.event.id, ...body.event };
+      notification = buildDirectNotification(body.type, event, body.dedupeKey);
+    } else {
+      if (!eventId || (action !== 'created' && action !== 'updated')) {
+        return json({ ok: false, error: 'invalid_payload' }, 400);
+      }
+
+      const eventDocument = await adminDb.collection('events').doc(eventId).get();
+
+      if (!eventDocument.exists) {
+        return json({ ok: false, error: 'event_not_found' }, 404);
+      }
+
+      event = { id: eventDocument.id, ...eventDocument.data() } as EventSnapshot;
+      notification = buildNotification(action, event, body.previousEvent);
+    }
+
+    if (!eventId || !action || !event) {
       return json({ ok: false, error: 'invalid_payload' }, 400);
     }
-
-    const eventDocument = await adminDb.collection('events').doc(eventId).get();
-
-    if (!eventDocument.exists) {
-      return json({ ok: false, error: 'event_not_found' }, 404);
-    }
-
-    const event = { id: eventDocument.id, ...eventDocument.data() } as EventSnapshot;
-    const notification = buildNotification(action, event, body.previousEvent);
 
     if (!notification) {
       return json({ ok: true, skipped: true, reason: 'no_notification_needed' });
@@ -247,7 +318,7 @@ export async function POST(request: NextRequest) {
           badge: `${appUrl}/icons/icon-96x96.png`,
           tag: notification.logId,
           renotify: false,
-          requireInteraction: event.priority === 'urgente',
+          requireInteraction: normalizePriority(event.priority) === 'urgente',
         },
       },
       data: {
