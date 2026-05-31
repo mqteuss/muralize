@@ -21,8 +21,27 @@ interface PullGestureState {
   canPull: boolean;
 }
 
+function getSheetHiddenOffset() {
+  if (typeof window === 'undefined') return 760;
+  return Math.max(window.innerHeight, 760);
+}
+
+const calmSpring = {
+  type: 'spring' as const,
+  stiffness: 280,
+  damping: 34,
+  mass: 0.92,
+};
+
+const settleSpring = {
+  type: 'spring' as const,
+  stiffness: 520,
+  damping: 44,
+  mass: 0.62,
+};
+
 export function BottomSheet({ title, description, children, onClose }: Props) {
-  const y = useMotionValue(0);
+  const y = useMotionValue(getSheetHiddenOffset());
   const [dragLimit, setDragLimit] = useState(520);
   const closeOnceRef = useRef(false);
   const pullGestureRef = useRef<PullGestureState | null>(null);
@@ -30,22 +49,37 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
   useBodyScrollLock(true);
 
   useEffect(() => {
-    y.set(0);
-
     const updateLimit = () => setDragLimit(Math.max(280, Math.min(window.innerHeight * 0.72, 720)));
     updateLimit();
+
+    y.set(getSheetHiddenOffset());
+    const frame = window.requestAnimationFrame(() => {
+      animate(y, 0, calmSpring);
+    });
+
     window.addEventListener('resize', updateLimit);
-    return () => window.removeEventListener('resize', updateLimit);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updateLimit);
+    };
   }, [y]);
 
   function requestClose() {
     if (closeOnceRef.current) return;
     closeOnceRef.current = true;
-    onClose();
+
+    animate(y, getSheetHiddenOffset(), {
+      type: 'spring',
+      stiffness: 340,
+      damping: 38,
+      mass: 0.82,
+    });
+
+    window.setTimeout(onClose, 230);
   }
 
   function resetPosition() {
-    animate(y, 0, { type: 'spring', stiffness: 640, damping: 48, mass: 0.55 });
+    animate(y, 0, settleSpring);
   }
 
   function beginPull(clientY: number, canPull: boolean) {
@@ -130,7 +164,7 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.12, ease: 'easeOut' }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
         onClick={requestClose}
         className="fixed inset-0 z-40 bg-[var(--app-overlay)]"
         style={{ overscrollBehavior: 'none', touchAction: 'none' }}
@@ -139,10 +173,6 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="bottom-sheet-title"
-        initial={{ y: '104%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '104%' }}
-        transition={{ type: 'spring', stiffness: 620, damping: 50, mass: 0.58 }}
         className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90dvh] min-h-[280px] transform-gpu flex-col overflow-hidden rounded-t-[32px] bg-[var(--app-surface)] shadow-[var(--app-shadow)] will-change-transform sm:left-1/2 sm:w-full sm:max-w-lg sm:-translate-x-1/2"
         style={{ y, backfaceVisibility: 'hidden', contain: 'layout paint', overscrollBehavior: 'contain' }}
       >
