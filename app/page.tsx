@@ -181,8 +181,10 @@ export default function Home() {
       return !isPast(event.date);
     });
 
-    if (sortOrder === 'desc') result = [...result].reverse();
-    return result;
+    return [...result].sort((a, b) => {
+      const dateDifference = a.date.getTime() - b.date.getTime();
+      return sortOrder === 'asc' ? dateDifference : -dateDifference;
+    });
   }, [events, filterType, searchQuery, sortOrder]);
 
   function showSuccess(message: string) {
@@ -258,7 +260,6 @@ export default function Home() {
   async function handleDuplicateEvent(event: SchoolEvent) {
     try {
       await duplicateEvent(event);
-      setFilterType('hidden');
       showSuccess('Evento duplicado como rascunho.');
     } catch (error) {
       console.error(error);
@@ -269,55 +270,14 @@ export default function Home() {
   async function handleRestoreEvent(event: SchoolEvent) {
     try {
       await restoreEvent(event.id, event.title);
-      showSuccess('Evento restaurado como rascunho. Revise antes de publicar.');
+      showSuccess('Evento restaurado como rascunho.');
     } catch (error) {
       console.error(error);
       setFirebaseError('Não foi possível restaurar o evento.');
     }
   }
 
-  async function handleHistoryEvent(event: SchoolEvent) {
-    setHistoryEvent(event);
-    setHistoryItems([]);
-    setHistoryLoading(true);
-
-    try {
-      const items = await getEventHistory(event.id);
-      setHistoryItems(items);
-    } catch (error) {
-      console.error(error);
-      setFirebaseError('Não foi possível carregar o histórico do evento.');
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
-
-  async function handleShareEvent(event: SchoolEvent) {
-    const eventUrl = typeof window !== 'undefined' ? `${window.location.origin}/?event=${event.id}` : '';
-    const shareText = [
-      `📌 ${event.title}`,
-      `📅 ${format(event.date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
-      event.category ? `🏷️ ${event.category}` : '',
-      event.priority !== 'normal' ? `⭐ ${event.priority}` : '',
-      event.description ? `📝 ${event.description}` : '',
-      eventUrl,
-    ].filter(Boolean).join('\n');
-
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: event.title, text: shareText, url: eventUrl });
-        return;
-      }
-
-      await navigator.clipboard.writeText(shareText);
-      showSuccess('Evento copiado para compartilhar.');
-    } catch (error) {
-      console.error(error);
-      setFirebaseError('Não foi possível compartilhar o evento neste navegador.');
-    }
-  }
-
-  async function confirmDelete() {
+  async function handleDeleteConfirmed() {
     if (!eventToDelete) return;
 
     try {
@@ -332,6 +292,38 @@ export default function Home() {
     } catch (error) {
       console.error(error);
       setFirebaseError('Não foi possível excluir o evento. Verifique sua permissão de administrador.');
+    }
+  }
+
+  async function handleHistoryEvent(event: SchoolEvent) {
+    setHistoryEvent(event);
+    setHistoryLoading(true);
+
+    try {
+      const items = await getEventHistory(event.id);
+      setHistoryItems(items);
+    } catch (error) {
+      console.error(error);
+      setHistoryItems([]);
+      setFirebaseError('Não foi possível carregar o histórico do evento.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function handleShareEvent(event: SchoolEvent) {
+    const text = `${event.title}\n${format(event.date, "dd 'de' MMMM, HH:mm", { locale: ptBR })}${event.description ? `\n${event.description}` : ''}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: event.title, text, url: window.location.href });
+        return;
+      }
+
+      await navigator.clipboard.writeText(`${text}\n${window.location.href}`);
+      showSuccess('Evento copiado para compartilhar.');
+    } catch (error) {
+      console.error(error);
     }
   }
 
@@ -367,13 +359,13 @@ export default function Home() {
         <div className="flex flex-col gap-4 mb-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-xl font-medium tracking-tight">Mural de Eventos</h2>
+              <h2 className="text-xl font-medium tracking-tight text-[var(--app-text)]">Mural de Eventos</h2>
               {isAdmin && (
-                <p className="text-sm text-[#49454F] mt-1">Modo admin ativo: criar, editar, fixar, duplicar, restaurar e acompanhar histórico.</p>
+                <p className="text-sm text-[var(--app-text-muted)] mt-1">Modo admin ativo: você pode criar, editar, ocultar e excluir eventos.</p>
               )}
-              {loadedFromCache && (
-                <p className="text-xs text-[#49454F] mt-1">
-                  Mostrando cache offline{cacheSavedAt ? ` de ${format(cacheSavedAt, "dd/MM 'às' HH:mm")}` : ''}.
+              {loadedFromCache && cacheSavedAt && (
+                <p className="text-xs text-[var(--app-text-muted)] mt-1">
+                  Dados offline salvos em {format(cacheSavedAt, "dd/MM 'às' HH:mm", { locale: ptBR })}.
                 </p>
               )}
             </div>
@@ -413,7 +405,7 @@ export default function Home() {
         ) : filteredEvents.length === 0 ? (
           <EmptyState isAdmin={isAdmin && filterType !== 'trash'} onActionClick={openCreateModal} />
         ) : (
-          <div className={`mt-8 grid gap-4 ${layoutView === 'grid' ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
+          <div className={`mt-8 grid gap-4 ${layoutView === 'grid' ? 'grid-cols-2 md:grid-cols-2' : 'grid-cols-1'}`}>
             <AnimatePresence mode="popLayout">
               {filteredEvents.map(event => (
                 <EventCard
@@ -421,6 +413,7 @@ export default function Home() {
                   event={event}
                   isAdmin={isAdmin}
                   onActionsClick={setActionEvent}
+                  viewMode={layoutView}
                 />
               ))}
             </AnimatePresence>
@@ -467,18 +460,18 @@ export default function Home() {
         )}
 
         {isOnboardingOpen && (
-          <WelcomeOnboarding onFinish={completeOnboarding} />
+          <WelcomeOnboarding
+            onClose={completeOnboarding}
+          />
         )}
 
         {eventToDelete && (
           <ConfirmModal
             title={eventToDelete.deletedAt ? 'Excluir permanentemente?' : 'Mover para lixeira?'}
-            description={eventToDelete.deletedAt
-              ? `“${eventToDelete.title}” será excluído permanentemente. Essa ação não pode ser desfeita.`
-              : `“${eventToDelete.title}” sairá do mural, mas poderá ser restaurado pela lixeira.`}
+            description={eventToDelete.deletedAt ? `Você está prestes a excluir “${eventToDelete.title}” de forma definitiva.` : `“${eventToDelete.title}” sairá do mural e poderá ser restaurado depois.`}
             confirmLabel={eventToDelete.deletedAt ? 'Excluir de vez' : 'Mover'}
             onCancel={() => setEventToDelete(null)}
-            onConfirm={confirmDelete}
+            onConfirm={handleDeleteConfirmed}
             danger
           />
         )}
@@ -494,7 +487,29 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-
+      <style jsx global>{`
+        .field {
+          width: 100%;
+          border-radius: 16px;
+          background: var(--app-surface-soft);
+          padding: 12px 14px;
+          outline: none;
+          border: 1px solid transparent;
+          color: var(--app-text);
+        }
+        .field:focus {
+          border-color: var(--app-text);
+        }
+        .field::placeholder {
+          color: var(--app-text-muted);
+        }
+        .form-label {
+          display: block;
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: var(--app-text-muted);
+        }
+      `}</style>
     </div>
   );
 }
