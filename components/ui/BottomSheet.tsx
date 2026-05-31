@@ -14,6 +14,9 @@ interface Props {
 
 interface PullGestureState {
   startY: number;
+  lastY: number;
+  lastTime: number;
+  velocityY: number;
   active: boolean;
   canPull: boolean;
 }
@@ -27,11 +30,13 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
   useBodyScrollLock(true);
 
   useEffect(() => {
+    y.set(0);
+
     const updateLimit = () => setDragLimit(Math.max(280, Math.min(window.innerHeight * 0.72, 720)));
     updateLimit();
     window.addEventListener('resize', updateLimit);
     return () => window.removeEventListener('resize', updateLimit);
-  }, []);
+  }, [y]);
 
   function requestClose() {
     if (closeOnceRef.current) return;
@@ -40,14 +45,51 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
   }
 
   function resetPosition() {
-    animate(y, 0, { type: 'spring', stiffness: 520, damping: 42, mass: 0.7 });
+    animate(y, 0, { type: 'spring', stiffness: 640, damping: 48, mass: 0.55 });
   }
 
-  function handleDragEnd(
-    _: MouseEvent | TouchEvent | PointerEvent,
-    info: { offset: { y: number }; velocity: { y: number } },
-  ) {
-    if (info.offset.y > 58 || info.velocity.y > 360) {
+  function beginPull(clientY: number, canPull: boolean) {
+    pullGestureRef.current = {
+      startY: clientY,
+      lastY: clientY,
+      lastTime: performance.now(),
+      velocityY: 0,
+      active: false,
+      canPull,
+    };
+  }
+
+  function updatePull(clientY: number, event?: React.TouchEvent<HTMLElement>) {
+    const gesture = pullGestureRef.current;
+    if (!gesture || !gesture.canPull) return;
+
+    const now = performance.now();
+    const deltaY = clientY - gesture.startY;
+    const timeDelta = Math.max(now - gesture.lastTime, 1);
+    gesture.velocityY = ((clientY - gesture.lastY) / timeDelta) * 1000;
+    gesture.lastY = clientY;
+    gesture.lastTime = now;
+
+    if (deltaY <= 0) {
+      if (gesture.active) y.set(0);
+      return;
+    }
+
+    if (!gesture.active && deltaY < 6) return;
+
+    gesture.active = true;
+    y.set(Math.min(deltaY, dragLimit));
+
+    event?.preventDefault();
+    event?.stopPropagation();
+  }
+
+  function endPull() {
+    const gesture = pullGestureRef.current;
+    const currentY = y.get();
+    pullGestureRef.current = null;
+
+    if (gesture?.active && (currentY > 74 || gesture.velocityY > 520)) {
       requestClose();
       return;
     }
@@ -55,54 +97,31 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
     resetPosition();
   }
 
-  function handleScrollTouchStart(event: React.TouchEvent<HTMLDivElement>) {
-    const touch = event.touches[0];
-    const target = event.currentTarget;
+  function handleHandleTouchStart(event: React.TouchEvent<HTMLElement>) {
+    beginPull(event.touches[0].clientY, true);
+  }
 
-    pullGestureRef.current = {
-      startY: touch.clientY,
-      active: false,
-      canPull: target.scrollTop <= 1,
-    };
+  function handleHandleTouchMove(event: React.TouchEvent<HTMLElement>) {
+    updatePull(event.touches[0].clientY, event);
+  }
+
+  function handleScrollTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    const target = event.currentTarget;
+    beginPull(event.touches[0].clientY, target.scrollTop <= 1);
   }
 
   function handleScrollTouchMove(event: React.TouchEvent<HTMLDivElement>) {
     const gesture = pullGestureRef.current;
-    if (!gesture) return;
-
-    const touch = event.touches[0];
     const target = event.currentTarget;
-    const deltaY = touch.clientY - gesture.startY;
 
     if (target.scrollTop > 1) {
-      gesture.canPull = false;
-      if (gesture.active) {
-        gesture.active = false;
-        resetPosition();
-      }
+      pullGestureRef.current = null;
+      if (y.get() !== 0) resetPosition();
       return;
     }
 
-    if (gesture.canPull && deltaY > 0) {
-      gesture.active = true;
-      const easedY = Math.min(deltaY * 0.82, dragLimit);
-      y.set(easedY);
-
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }
-
-  function handleScrollTouchEnd() {
-    const currentY = y.get();
-    pullGestureRef.current = null;
-
-    if (currentY > 68) {
-      requestClose();
-      return;
-    }
-
-    resetPosition();
+    if (gesture) gesture.canPull = true;
+    updatePull(event.touches[0].clientY, event);
   }
 
   return (
@@ -123,22 +142,23 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
         initial={{ y: '104%' }}
         animate={{ y: 0 }}
         exit={{ y: '104%' }}
-        transition={{ type: 'spring', stiffness: 560, damping: 46, mass: 0.64 }}
-        drag="y"
-        dragConstraints={{ top: 0, bottom: dragLimit }}
-        dragElastic={0.04}
-        dragMomentum={false}
-        onDragEnd={handleDragEnd}
+        transition={{ type: 'spring', stiffness: 620, damping: 50, mass: 0.58 }}
         className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90dvh] min-h-[280px] transform-gpu flex-col overflow-hidden rounded-t-[32px] bg-[var(--app-surface)] shadow-[var(--app-shadow)] will-change-transform sm:left-1/2 sm:w-full sm:max-w-lg sm:-translate-x-1/2"
         style={{ y, backfaceVisibility: 'hidden', contain: 'layout paint', overscrollBehavior: 'contain' }}
       >
-        <div className="shrink-0 px-5 pb-3 pt-3">
+        <div
+          className="shrink-0 px-5 pb-3 pt-3"
+          onTouchStart={handleHandleTouchStart}
+          onTouchMove={handleHandleTouchMove}
+          onTouchEnd={endPull}
+          onTouchCancel={endPull}
+          style={{ touchAction: 'none' }}
+        >
           <button
             type="button"
             onClick={requestClose}
             className="mx-auto mb-3 block h-1.5 w-11 rounded-full bg-[var(--app-border)] transition-colors active:bg-[var(--app-text-muted)] sm:hidden"
             aria-label="Fechar arrastando ou tocando"
-            style={{ touchAction: 'none' }}
           />
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -162,8 +182,8 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
           className="muralize-sheet-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-[calc(2.25rem+env(safe-area-inset-bottom))] sm:pb-6"
           onTouchStart={handleScrollTouchStart}
           onTouchMove={handleScrollTouchMove}
-          onTouchEnd={handleScrollTouchEnd}
-          onTouchCancel={handleScrollTouchEnd}
+          onTouchEnd={endPull}
+          onTouchCancel={endPull}
           onWheel={event => event.stopPropagation()}
           style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
         >
