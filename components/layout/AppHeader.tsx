@@ -1,8 +1,9 @@
-import { LogIn, LogOut } from 'lucide-react';
+import { LogIn, LogOut, Moon, Sun } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { InstallPwaButton } from '@/components/pwa/InstallPwaButton';
 import { PushNotificationButton } from '@/components/pwa/PushNotificationButton';
 import { SchoolEvent } from '@/lib/events';
+import { useTheme } from '@/hooks/useTheme';
 
 interface Props {
   events: SchoolEvent[];
@@ -11,6 +12,8 @@ interface Props {
 
 export function AppHeader({ onLogoutClick }: Props) {
   const { user, loading: authLoading, signIn } = useAuth();
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
 
   return (
     <header className="sticky top-0 z-10 bg-[#fefefe]/80 backdrop-blur-md border-b border-[#e5e5e9]">
@@ -26,6 +29,16 @@ export function AppHeader({ onLogoutClick }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="p-2 text-[#49454F] hover:bg-[#F4EFF4] rounded-full transition-colors"
+            title={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'}
+            aria-label={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'}
+          >
+            {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+
           <InstallPwaButton />
           <PushNotificationButton />
 

@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#FEFEFE" />
+    <meta name="theme-color" content="#101014" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#FEFEFE" media="(prefers-color-scheme: light)" />
     <title>Muralize offline</title>
     <link rel="icon" href="/favicon.ico" />
     <style>
@@ -14,6 +15,20 @@
         --surface: #FEFEFE;
         --soft: #F4EFF4;
         --border: #CAC4D0;
+        --button-bg: #1D1B20;
+        --button-text: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --ink: #F7F2FA;
+          --muted: #CAC4D0;
+          --surface: #101014;
+          --soft: #221f2a;
+          --border: #4B4356;
+          --button-bg: #D0BCFF;
+          --button-text: #1D1B20;
+        }
       }
       * { box-sizing: border-box; }
       body {
@@ -28,7 +43,7 @@
       }
       main {
         width: min(100%, 420px);
-        border: 1px solid rgba(202, 196, 208, 0.7);
+        border: 1px solid var(--border);
         background: var(--soft);
         border-radius: 28px;
         padding: 28px;
@@ -60,8 +75,8 @@
         padding: 0 18px;
         border-radius: 999px;
         border: 0;
-        color: #fff;
-        background: var(--ink);
+        color: var(--button-text);
+        background: var(--button-bg);
         font-weight: 600;
         text-decoration: none;
         cursor: pointer;

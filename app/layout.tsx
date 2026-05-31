@@ -2,6 +2,18 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import Providers from './providers';
 
+const themeBootScript = `
+  try {
+    const savedTheme = localStorage.getItem('muralize-theme') || 'system';
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const resolvedTheme = savedTheme === 'dark' || (savedTheme === 'system' && prefersDark) ? 'dark' : 'light';
+    document.documentElement.dataset.theme = resolvedTheme;
+    document.documentElement.style.colorScheme = resolvedTheme;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#101014' : '#FEFEFE');
+  } catch (_) {}
+`;
+
 export const metadata: Metadata = {
   title: {
     default: 'Muralize',
@@ -13,7 +25,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'Muralize',
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
   },
   formatDetection: {
     telephone: false,
@@ -34,14 +46,18 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#FEFEFE',
-  colorScheme: 'light',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#FEFEFE' },
+    { media: '(prefers-color-scheme: dark)', color: '#101014' },
+  ],
+  colorScheme: 'light dark',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
       <body className="bg-[#fefefe] text-[#1D1B20] antialiased">
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         <Providers>
           {children}
         </Providers>
