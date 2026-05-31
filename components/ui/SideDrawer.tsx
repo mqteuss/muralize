@@ -26,8 +26,8 @@ export function SideDrawer({ title, description, side = 'right', children, onClo
   }, []);
 
   function handleDragEnd(_: MouseEvent | TouchEvent | PointerEvent, info: { offset: { x: number }; velocity: { x: number } }) {
-    const shouldCloseRight = side === 'right' && (info.offset.x > 82 || info.velocity.x > 560);
-    const shouldCloseLeft = side === 'left' && (info.offset.x < -82 || info.velocity.x < -560);
+    const shouldCloseRight = side === 'right' && (info.offset.x > 76 || info.velocity.x > 520);
+    const shouldCloseLeft = side === 'left' && (info.offset.x < -76 || info.velocity.x < -520);
 
     if (shouldCloseRight || shouldCloseLeft) onClose();
   }
@@ -48,11 +48,11 @@ export function SideDrawer({ title, description, side = 'right', children, onClo
         initial={{ x: fromX }}
         animate={{ x: 0 }}
         exit={{ x: fromX }}
-        transition={{ type: 'spring', stiffness: 330, damping: 34 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 37, mass: 0.9 }}
         drag="x"
         dragDirectionLock
         dragConstraints={dragConstraints}
-        dragElastic={0.16}
+        dragElastic={0.02}
         dragMomentum={false}
         onDragEnd={handleDragEnd}
         className={`fixed top-0 ${sideClass} z-50 flex h-dvh w-[min(88vw,390px)] touch-pan-y flex-col border border-[var(--app-border-soft)] bg-[var(--app-surface)] shadow-[var(--app-shadow)] ${roundedClass}`}

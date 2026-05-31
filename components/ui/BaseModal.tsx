@@ -1,16 +1,27 @@
 import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
 
 interface Props {
   children: React.ReactNode;
   onClose: () => void;
+  scrollable?: boolean;
 }
 
-export function BaseModal({ children, onClose }: Props) {
+export function BaseModal({ children, onClose, scrollable = true }: Props) {
+  const [dragLimit, setDragLimit] = useState(520);
+
+  useEffect(() => {
+    const updateLimit = () => setDragLimit(Math.max(360, Math.min(window.innerHeight * 0.65, 720)));
+    updateLimit();
+    window.addEventListener('resize', updateLimit);
+    return () => window.removeEventListener('resize', updateLimit);
+  }, []);
+
   function handleDragEnd(
     _: MouseEvent | TouchEvent | PointerEvent,
     info: { offset: { y: number }; velocity: { y: number } },
   ) {
-    if (info.offset.y > 90 || info.velocity.y > 700) onClose();
+    if (info.offset.y > 86 || info.velocity.y > 540) onClose();
   }
 
   return (
@@ -19,6 +30,7 @@ export function BaseModal({ children, onClose }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
         onClick={onClose}
         className="fixed inset-0 z-40 bg-[var(--app-overlay)] backdrop-blur-sm"
       />
@@ -26,24 +38,25 @@ export function BaseModal({ children, onClose }: Props) {
         <motion.div
           role="dialog"
           aria-modal="true"
-          initial={{ opacity: 0, y: 42, scale: 0.98 }}
+          initial={{ opacity: 0, y: 56, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 42, scale: 0.98 }}
-          transition={{ type: 'spring', stiffness: 340, damping: 32 }}
+          exit={{ opacity: 0, y: 56, scale: 0.98 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 36, mass: 0.9 }}
           drag="y"
           dragDirectionLock
-          dragConstraints={{ top: 0, bottom: 0 }}
-          dragElastic={{ top: 0, bottom: 0.22 }}
+          dragConstraints={{ top: 0, bottom: dragLimit }}
+          dragElastic={0.02}
+          dragMomentum={false}
           onDragEnd={handleDragEnd}
-          className="flex max-h-[92dvh] flex-col overflow-hidden rounded-t-[32px] bg-[var(--app-surface)] shadow-[var(--app-shadow)] sm:max-h-[min(92dvh,680px)] sm:rounded-[28px]"
+          className="flex max-h-[92dvh] touch-pan-y flex-col overflow-hidden rounded-t-[32px] bg-[var(--app-surface)] shadow-[var(--app-shadow)] sm:max-h-[min(92dvh,680px)] sm:rounded-[28px]"
         >
           <button
             type="button"
             onClick={onClose}
-            className="mx-auto mt-3 mb-1 h-1.5 w-11 shrink-0 rounded-full bg-[var(--app-border)] sm:hidden"
+            className="mx-auto mb-1 mt-3 h-1.5 w-11 shrink-0 rounded-full bg-[var(--app-border)] transition-colors active:bg-[var(--app-text-muted)] sm:hidden"
             aria-label="Fechar arrastando ou tocando"
           />
-          <div className="flex-1 overflow-y-auto px-6 pt-4 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:p-6">
+          <div className={scrollable ? 'min-h-0 flex-1 overflow-y-auto px-6 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-4 sm:p-6' : 'min-h-0 flex-1 overflow-hidden'}>
             {children}
           </div>
         </motion.div>

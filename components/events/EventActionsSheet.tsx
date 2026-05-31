@@ -33,11 +33,11 @@ function ActionButton({
       onClick={onClick}
       className={`flex w-full items-start gap-3 rounded-3xl border p-4 text-left transition-colors ${
         danger
-          ? 'border-red-200 bg-red-50/70 text-red-700 hover:bg-red-100'
+          ? 'border-red-200 bg-red-100 text-red-800 shadow-sm hover:bg-red-100'
           : 'border-[var(--app-border-soft)] bg-[var(--app-surface-soft)] text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]'
       }`}
     >
-      <span className={danger ? 'text-red-600' : 'text-[var(--app-text-muted)]'}>{icon}</span>
+      <span className={danger ? 'text-red-700' : 'text-[var(--app-text-muted)]'}>{icon}</span>
       <span>
         <span className="block text-sm font-semibold">{label}</span>
         <span className={`mt-0.5 block text-xs leading-relaxed ${danger ? 'text-red-700' : 'text-[var(--app-text-muted)]'}`}>
