@@ -70,7 +70,7 @@ export function saveCachedEvents(events: SchoolEvent[]) {
   }
 }
 
-export function loadCachedEvents() {
+export function loadCachedEvents(_options?: { includeDeleted?: boolean; includePrivate?: boolean }) {
   if (!hasStorage()) return [];
 
   try {
