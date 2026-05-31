@@ -1,8 +1,6 @@
 import { auth } from './firebase';
 import type { EventPriority } from './events';
 
-export type EventNotificationType = 'created' | 'published' | 'priority_up' | 'rescheduled';
-
 export interface NotificationEventSnapshot {
   id?: string;
   title?: string;
@@ -21,14 +19,7 @@ export interface NotifyEventChangeInput {
   previousEvent?: NotificationEventSnapshot | null;
 }
 
-export interface NotifyEventSubscribersInput {
-  type: EventNotificationType;
-  event: NotificationEventSnapshot & { id: string };
-  previousEvent?: NotificationEventSnapshot | null;
-  dedupeKey?: string;
-}
-
-async function postNotificationPayload(payload: NotifyEventChangeInput | NotifyEventSubscribersInput) {
+export async function notifyEventChange(input: NotifyEventChangeInput) {
   const user = auth.currentUser;
 
   if (!user) {
@@ -44,7 +35,7 @@ async function postNotificationPayload(payload: NotifyEventChangeInput | NotifyE
       'Content-Type': 'application/json',
       Authorization: `Bearer ${idToken}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(input),
   });
 
   let data: unknown = null;
@@ -60,12 +51,4 @@ async function postNotificationPayload(payload: NotifyEventChangeInput | NotifyE
   }
 
   return data;
-}
-
-export async function notifyEventChange(input: NotifyEventChangeInput) {
-  return postNotificationPayload(input);
-}
-
-export async function notifyEventSubscribers(input: NotifyEventSubscribersInput) {
-  return postNotificationPayload(input);
 }
