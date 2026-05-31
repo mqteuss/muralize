@@ -1,8 +1,5 @@
-'use client';
-
 import { X } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useEffect, useState } from 'react';
 
 interface Props {
   title: string;
@@ -12,14 +9,11 @@ interface Props {
 }
 
 export function BottomSheet({ title, description, children, onClose }: Props) {
-  const [dragLimit, setDragLimit] = useState(420);
-
-  useEffect(() => {
-    setDragLimit(Math.max(360, window.innerHeight));
-  }, []);
-
-  function handleDragEnd(_: MouseEvent | TouchEvent | PointerEvent, info: { offset: { y: number }; velocity: { y: number } }) {
-    if (info.offset.y > 78 || info.velocity.y > 520) onClose();
+  function handleDragEnd(
+    _: MouseEvent | TouchEvent | PointerEvent,
+    info: { offset: { y: number }; velocity: { y: number } },
+  ) {
+    if (info.offset.y > 90 || info.velocity.y > 700) onClose();
   }
 
   return (
@@ -41,14 +35,18 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
         transition={{ type: 'spring', stiffness: 360, damping: 34 }}
         drag="y"
         dragDirectionLock
-        dragConstraints={{ top: 0, bottom: dragLimit }}
-        dragElastic={{ top: 0, bottom: 0.18 }}
-        dragMomentum={false}
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0, bottom: 0.24 }}
         onDragEnd={handleDragEnd}
-        className="fixed inset-x-0 bottom-0 z-50 mx-auto max-h-[92dvh] touch-pan-y overflow-hidden rounded-t-[32px] border border-[var(--app-border-soft)] bg-[var(--app-surface)] shadow-[var(--app-shadow)] sm:bottom-6 sm:w-[min(520px,calc(100%-2rem))] sm:rounded-[32px]"
+        className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92dvh] flex-col overflow-hidden rounded-t-[32px] border border-[var(--app-border-soft)] bg-[var(--app-surface)] shadow-[var(--app-shadow)] sm:bottom-6 sm:w-[min(520px,calc(100%-2rem))] sm:rounded-[32px]"
       >
-        <div className="sticky top-0 z-10 cursor-grab bg-[var(--app-surface)] px-5 pt-3 pb-4 active:cursor-grabbing">
-          <div className="mx-auto mb-3 h-1.5 w-11 rounded-full bg-[var(--app-border)]" />
+        <div className="shrink-0 bg-[var(--app-surface)] px-5 pt-3 pb-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="mx-auto mb-3 block h-1.5 w-11 rounded-full bg-[var(--app-border)] sm:hidden"
+            aria-label="Fechar arrastando ou tocando"
+          />
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h3 id="bottom-sheet-title" className="text-lg font-semibold text-[var(--app-text)]">
@@ -59,7 +57,6 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
-              onPointerDown={event => event.stopPropagation()}
               className="rounded-full p-2 text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-soft)]"
               aria-label="Fechar"
             >
@@ -67,7 +64,7 @@ export function BottomSheet({ title, description, children, onClose }: Props) {
             </button>
           </div>
         </div>
-        <div className="max-h-[calc(92dvh-84px)] overflow-y-auto px-5 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+        <div className="flex-1 overflow-y-auto px-5 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:pb-6">
           {children}
         </div>
       </motion.section>

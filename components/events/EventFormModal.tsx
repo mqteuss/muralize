@@ -111,17 +111,22 @@ export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }:
 
   return (
     <BaseModal onClose={onClose}>
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h3 className="text-lg font-semibold">{isEditing ? 'Editar evento' : 'Novo evento'}</h3>
-          <p className="text-sm text-[#49454F] mt-1">Mantenha a informação curta e clara para os alunos.</p>
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="text-lg font-semibold text-[var(--app-text)]">{isEditing ? 'Editar evento' : 'Novo evento'}</h3>
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">Mantenha a informação curta e clara para os alunos.</p>
         </div>
-        <button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-[#F4EFF4]" aria-label="Fechar">
-          <X className="w-5 h-5" />
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full p-2 text-[var(--app-text-muted)] hover:bg-[var(--app-surface-soft)]"
+          aria-label="Fechar"
+        >
+          <X className="h-5 w-5" />
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 pb-2">
         <label className="form-label">
           Título
           <input className="field mt-1" placeholder="Ex: Prova de matemática" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
@@ -166,25 +171,25 @@ export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }:
         <button
           type="button"
           onClick={() => setForm({ ...form, isPinned: !form.isPinned })}
-          className="w-full flex items-start gap-3 text-left rounded-2xl bg-[#F4EFF4] hover:bg-[#E6E0E9] transition-colors p-4"
+          className="flex w-full items-start gap-3 rounded-2xl bg-[var(--app-surface-soft)] p-4 text-left transition-colors hover:bg-[var(--app-surface-hover)]"
         >
-          <Pin className={`w-5 h-5 mt-0.5 ${form.isPinned ? 'text-[#6750A4]' : 'text-[#49454F]'}`} />
+          <Pin className={`w-5 h-5 mt-0.5 ${form.isPinned ? 'text-[#6750A4]' : 'text-[var(--app-text-muted)]'}`} />
           <span>
-            <span className="block text-sm font-medium text-[#1D1B20]">
+            <span className="block text-sm font-medium text-[var(--app-text)]">
               {form.isPinned ? 'Evento fixado no topo' : 'Evento não fixado'}
             </span>
-            <span className="block text-xs text-[#49454F] mt-0.5">
+            <span className="mt-0.5 block text-xs text-[var(--app-text-muted)]">
               Eventos fixados aparecem antes dos demais no mural.
             </span>
           </span>
         </button>
 
-        <div className="rounded-2xl bg-[#F4EFF4] p-4">
+        <div className="rounded-2xl bg-[var(--app-surface-soft)] p-4">
           <div className="flex items-start gap-3">
-            <Star className="w-5 h-5 text-[#49454F] mt-0.5" />
+            <Star className="mt-0.5 h-5 w-5 text-[var(--app-text-muted)]" />
             <div>
-              <p className="text-sm font-medium text-[#1D1B20]">Destaque: {PRIORITY_OPTIONS.find(option => option.value === form.priority)?.label}</p>
-              <p className="text-xs text-[#49454F] mt-0.5">{PRIORITY_OPTIONS.find(option => option.value === form.priority)?.description}</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">Destaque: {PRIORITY_OPTIONS.find(option => option.value === form.priority)?.label}</p>
+              <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">{PRIORITY_OPTIONS.find(option => option.value === form.priority)?.description}</p>
             </div>
           </div>
         </div>
@@ -192,14 +197,14 @@ export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }:
         <button
           type="button"
           onClick={() => setForm({ ...form, isPublic: !form.isPublic })}
-          className="w-full flex items-start gap-3 text-left rounded-2xl bg-[#F4EFF4] hover:bg-[#E6E0E9] transition-colors p-4"
+          className="flex w-full items-start gap-3 rounded-2xl bg-[var(--app-surface-soft)] p-4 text-left transition-colors hover:bg-[var(--app-surface-hover)]"
         >
-          {form.isPublic ? <Eye className="w-5 h-5 text-[#49454F] mt-0.5" /> : <EyeOff className="w-5 h-5 text-amber-700 mt-0.5" />}
+          {form.isPublic ? <Eye className="mt-0.5 h-5 w-5 text-[var(--app-text-muted)]" /> : <EyeOff className="mt-0.5 h-5 w-5 text-amber-700" />}
           <span>
-            <span className="block text-sm font-medium text-[#1D1B20]">
+            <span className="block text-sm font-medium text-[var(--app-text)]">
               {form.isPublic ? 'Visível para todos' : 'Rascunho privado'}
             </span>
-            <span className="block text-xs text-[#49454F] mt-0.5">
+            <span className="mt-0.5 block text-xs text-[var(--app-text-muted)]">
               {form.isPublic ? 'Alunos e visitantes conseguem ver este evento.' : 'Somente administradores conseguem ver este evento.'}
             </span>
           </span>
@@ -207,9 +212,14 @@ export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }:
 
         {(errorMsg || localError) && <p className="text-sm text-red-600">{errorMsg || localError}</p>}
 
-        <button disabled={isSaving} className="w-full py-3 rounded-full bg-[#1D1B20] text-white font-medium disabled:opacity-60">
-          {isSaving ? 'Salvando...' : isEditing ? 'Salvar alterações' : 'Criar evento'}
-        </button>
+        <div className="sticky bottom-[-1px] z-10 -mx-6 bg-[var(--app-surface)] px-6 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pt-0 sm:pb-0">
+          <button
+            disabled={isSaving}
+            className="w-full rounded-full bg-[var(--app-primary)] py-3 font-medium text-[var(--app-primary-text)] shadow-sm disabled:opacity-60"
+          >
+            {isSaving ? 'Salvando...' : isEditing ? 'Salvar alterações' : 'Criar evento'}
+          </button>
+        </div>
       </form>
     </BaseModal>
   );
