@@ -167,6 +167,10 @@ export function SettingsDrawer({ isOpen, isAdmin, loadedFromCache, onClose, onLo
             {isOnline ? 'Online' : 'Offline'} · {loadedFromCache ? 'Cache local' : 'Dados atualizados'}
           </div>
         </SettingsRow>
+
+        <div className="px-2 pb-1 pt-2 text-center text-xs text-[var(--app-text-muted)]">
+          Criado por <span className="font-semibold text-[var(--app-text)]">Mateus Henrique</span>
+        </div>
       </div>
     </SideDrawer>
   );
