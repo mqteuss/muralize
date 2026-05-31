@@ -45,19 +45,18 @@ function toDate(value: unknown): Date {
   return new Date();
 }
 
+function sortEventsByDate(events: SchoolEvent[]) {
+  return events.sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
 export function subscribeToEvents(
   isAdmin: boolean,
   onUpdate: (events: SchoolEvent[]) => void,
   onError: (err: Error) => void,
 ) {
-  const constraints = [];
-
-  if (!isAdmin) {
-    constraints.push(where('isPublic', '==', true));
-  }
-
-  constraints.push(orderBy('date', 'asc'));
-  constraints.push(limit(MAX_EVENTS));
+  const constraints = isAdmin
+    ? [orderBy('date', 'asc'), limit(MAX_EVENTS)]
+    : [where('isPublic', '==', true), limit(MAX_EVENTS)];
 
   const eventsQuery = query(collection(db, EVENTS_PATH), ...constraints);
 
@@ -82,7 +81,7 @@ export function subscribeToEvents(
         });
       });
 
-      onUpdate(events);
+      onUpdate(sortEventsByDate(events));
     },
     error => {
       onError(error instanceof Error ? error : new Error(String(error)));
