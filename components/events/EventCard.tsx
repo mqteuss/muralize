@@ -8,6 +8,7 @@ interface Props {
   event: SchoolEvent;
   isAdmin: boolean;
   onActionsClick: (event: SchoolEvent) => void;
+  onDetailsClick?: (event: SchoolEvent) => void;
   viewMode?: 'grid' | 'list';
 }
 
@@ -17,7 +18,7 @@ const priorityLabel: Record<SchoolEvent['priority'], string> = {
   urgente: 'Urgente',
 };
 
-export function EventCard({ event, isAdmin, onActionsClick, viewMode = 'list' }: Props) {
+export function EventCard({ event, isAdmin, onActionsClick, onDetailsClick, viewMode = 'list' }: Props) {
   const isCompact = viewMode === 'grid';
 
   const getRelativeTimeText = (date: Date) => {
@@ -34,13 +35,28 @@ export function EventCard({ event, isAdmin, onActionsClick, viewMode = 'list' }:
       ? 'text-amber-800 bg-amber-100'
       : 'text-[#49454F] bg-[#E6E0E9]';
 
+  function handleCardClick() {
+    onDetailsClick?.(event);
+  }
+
+  function handleCardKeyDown(eventKey: React.KeyboardEvent<HTMLElement>) {
+    if (eventKey.key === 'Enter' || eventKey.key === ' ') {
+      eventKey.preventDefault();
+      handleCardClick();
+    }
+  }
+
   return (
     <motion.article
       layout
+      role="button"
+      tabIndex={0}
       initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
-      className={`group relative flex flex-col justify-between rounded-3xl border transition-colors ${
+      onClick={handleCardClick}
+      onKeyDown={handleCardKeyDown}
+      className={`group relative flex cursor-pointer flex-col justify-between rounded-3xl border transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--app-primary)] ${
         isCompact ? 'min-h-[168px] p-3.5 sm:min-h-0 sm:p-5' : 'p-5'
       } ${
         event.deletedAt
@@ -52,7 +68,10 @@ export function EventCard({ event, isAdmin, onActionsClick, viewMode = 'list' }:
     >
       <button
         type="button"
-        onClick={() => onActionsClick(event)}
+        onClick={(clickEvent) => {
+          clickEvent.stopPropagation();
+          onActionsClick(event);
+        }}
         className={`absolute rounded-full text-[#49454F] transition-colors hover:bg-[#E6E0E9] ${
           isCompact ? 'right-2.5 top-2.5 p-1.5 sm:right-4 sm:top-4 sm:p-2' : 'right-4 top-4 p-2'
         }`}
