@@ -1,6 +1,6 @@
 {
-  "name": "Mural da Escola",
-  "description": "Calendário e Lembretes Escolares",
+  "name": "Muralize",
+  "description": "PWA escolar para mural de avisos, provas, reuniões, entregas e eventos.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  background: #fefefe;
+}
+
+html {
+  min-height: 100%;
+  background: #fefefe;
+}
+
+body {
+  min-height: 100%;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: contain;
+  }
+}
