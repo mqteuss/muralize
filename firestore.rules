@@ -83,20 +83,6 @@ service cloud.firestore {
       data.title.size() <= 120;
     }
 
-    function signedSubscriptionEmailIsValid(data) {
-      return !('email' in data) ||
-        data.email == null ||
-        (request.auth.token.email is string && data.email == request.auth.token.email);
-    }
-
-    function subscriptionOwnerIsValid(data) {
-      return isSignedIn()
-        ? (!('uid' in data) || data.uid == null || data.uid == request.auth.uid) &&
-          signedSubscriptionEmailIsValid(data)
-        : (!('uid' in data) || data.uid == null) &&
-          (!('email' in data) || data.email == null);
-    }
-
     function isValidSubscription(data, subscriptionId) {
       return isValidId(subscriptionId) &&
       data.keys().hasAll(['token', 'tokenHash', 'permission', 'createdAt', 'updatedAt']) &&
@@ -112,7 +98,6 @@ service cloud.firestore {
       data.updatedAt is timestamp &&
       data.updatedAt <= request.time &&
       data.updatedAt >= request.time - duration.value(10, 'm') &&
-      subscriptionOwnerIsValid(data) &&
       (!('uid' in data) || data.uid == null || data.uid is string) &&
       (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 254)) &&
       (!('userAgent' in data) || (data.userAgent is string && data.userAgent.size() <= 300));
@@ -120,7 +105,6 @@ service cloud.firestore {
 
     function isValidSubscriptionUpdate(data, subscriptionId) {
       return isValidSubscription(data, subscriptionId) &&
-      data.createdAt == resource.data.createdAt &&
       data.tokenHash == resource.data.tokenHash &&
       data.token == resource.data.token;
     }
