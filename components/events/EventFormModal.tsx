@@ -1,10 +1,15 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Eye, EyeOff, X } from 'lucide-react';
+import { Eye, EyeOff, Pin, Star, X } from 'lucide-react';
 import { BaseModal } from '@/components/ui/BaseModal';
-import { SchoolEvent } from '@/lib/events';
+import { EventPriority, SchoolEvent } from '@/lib/events';
 
 const CATEGORY_OPTIONS = ['Aviso', 'Prova', 'Reunião', 'Entrega', 'Evento', 'Plantão', 'Outro'];
+const PRIORITY_OPTIONS: { value: EventPriority; label: string; description: string }[] = [
+  { value: 'normal', label: 'Normal', description: 'Evento comum do mural.' },
+  { value: 'importante', label: 'Importante', description: 'Recebe destaque visual.' },
+  { value: 'urgente', label: 'Urgente', description: 'Aparece com destaque máximo.' },
+];
 
 export interface EventFormPayload {
   title: string;
@@ -12,6 +17,8 @@ export interface EventFormPayload {
   category: string;
   date: Date;
   isPublic: boolean;
+  isPinned: boolean;
+  priority: EventPriority;
 }
 
 interface EventFormState {
@@ -21,6 +28,8 @@ interface EventFormState {
   date: string;
   time: string;
   isPublic: boolean;
+  isPinned: boolean;
+  priority: EventPriority;
 }
 
 interface Props {
@@ -38,6 +47,8 @@ const emptyForm: EventFormState = {
   date: '',
   time: '',
   isPublic: true,
+  isPinned: false,
+  priority: 'normal',
 };
 
 export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }: Props) {
@@ -60,6 +71,8 @@ export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }:
       date: format(event.date, 'yyyy-MM-dd'),
       time: format(event.date, 'HH:mm'),
       isPublic: event.isPublic,
+      isPinned: event.isPinned,
+      priority: event.priority || 'normal',
     });
   }, [event]);
 
@@ -91,6 +104,8 @@ export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }:
       category: form.category.trim(),
       date: new Date(`${form.date}T${form.time}`),
       isPublic: form.isPublic,
+      isPinned: form.isPinned,
+      priority: form.priority,
     });
   }
 
@@ -112,14 +127,25 @@ export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }:
           <input className="field mt-1" placeholder="Ex: Prova de matemática" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
         </label>
 
-        <label className="form-label">
-          Categoria
-          <select className="field mt-1" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-            {CATEGORY_OPTIONS.map(category => (
-              <option key={category} value={category}>{category}</option>
-            ))}
-          </select>
-        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="form-label">
+            Categoria
+            <select className="field mt-1" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+              {CATEGORY_OPTIONS.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="form-label">
+            Prioridade
+            <select className="field mt-1" value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value as EventPriority })}>
+              {PRIORITY_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         <label className="form-label">
           Descrição
@@ -135,6 +161,32 @@ export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }:
             Horário
             <input className="field mt-1" type="time" value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} />
           </label>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setForm({ ...form, isPinned: !form.isPinned })}
+          className="w-full flex items-start gap-3 text-left rounded-2xl bg-[#F4EFF4] hover:bg-[#E6E0E9] transition-colors p-4"
+        >
+          <Pin className={`w-5 h-5 mt-0.5 ${form.isPinned ? 'text-[#6750A4]' : 'text-[#49454F]'}`} />
+          <span>
+            <span className="block text-sm font-medium text-[#1D1B20]">
+              {form.isPinned ? 'Evento fixado no topo' : 'Evento não fixado'}
+            </span>
+            <span className="block text-xs text-[#49454F] mt-0.5">
+              Eventos fixados aparecem antes dos demais no mural.
+            </span>
+          </span>
+        </button>
+
+        <div className="rounded-2xl bg-[#F4EFF4] p-4">
+          <div className="flex items-start gap-3">
+            <Star className="w-5 h-5 text-[#49454F] mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-[#1D1B20]">Destaque: {PRIORITY_OPTIONS.find(option => option.value === form.priority)?.label}</p>
+              <p className="text-xs text-[#49454F] mt-0.5">{PRIORITY_OPTIONS.find(option => option.value === form.priority)?.description}</p>
+            </div>
+          </div>
         </div>
 
         <button

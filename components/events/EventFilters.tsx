@@ -1,6 +1,6 @@
 import { ArrowDownUp, LayoutGrid, List } from 'lucide-react';
 
-export type EventFilterType = 'all' | 'today' | 'week' | 'month' | 'past' | 'hidden';
+export type EventFilterType = 'all' | 'today' | 'week' | 'month' | 'past' | 'hidden' | 'trash';
 
 interface Props {
   filterType: EventFilterType;
@@ -22,7 +22,10 @@ export function EventFilters({
     { id: 'today', label: 'Hoje' },
     { id: 'week', label: 'Esta Semana' },
     { id: 'month', label: 'Este Mês' },
-    ...(showHiddenFilter ? [{ id: 'hidden' as EventFilterType, label: 'Rascunhos' }] : []),
+    ...(showHiddenFilter ? [
+      { id: 'hidden' as EventFilterType, label: 'Rascunhos' },
+      { id: 'trash' as EventFilterType, label: 'Lixeira' },
+    ] : []),
     { id: 'past', label: 'Finalizados' }
   ];
 
@@ -32,6 +35,7 @@ export function EventFilters({
         {filters.map(filter => (
           <button
             key={filter.id}
+            type="button"
             onClick={() => setFilterType(filter.id)}
             className={`px-4 py-1.5 flex items-center gap-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
               filterType === filter.id 
@@ -51,6 +55,7 @@ export function EventFilters({
       
       <div className="flex items-center gap-1 border-l border-[#CAC4D0] pl-3 ml-2 flex-shrink-0">
         <button
+          type="button"
           onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
           className="p-2 text-[#49454F] hover:bg-[#E6E0E9] rounded-full transition-colors flex items-center justify-center"
           title={sortOrder === 'asc' ? 'Mais próximos primeiro' : 'Mais distantes primeiro'}
@@ -59,6 +64,7 @@ export function EventFilters({
           <ArrowDownUp className="w-4 h-4" />
         </button>
         <button
+          type="button"
           onClick={() => setLayoutView(layoutView === 'grid' ? 'list' : 'grid')}
           className="p-2 text-[#49454F] hover:bg-[#E6E0E9] rounded-full transition-colors flex items-center justify-center"
           title={layoutView === 'grid' ? 'Ver como lista' : 'Ver como grid'}

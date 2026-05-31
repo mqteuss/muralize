@@ -1,7 +1,7 @@
-import { Bell, BellOff, LogIn, LogOut } from 'lucide-react';
+import { LogIn, LogOut } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { InstallPwaButton } from '@/components/pwa/InstallPwaButton';
-import { useNotifications } from '@/hooks/useNotifications';
+import { PushNotificationButton } from '@/components/pwa/PushNotificationButton';
 import { SchoolEvent } from '@/lib/events';
 
 interface Props {
@@ -9,9 +9,8 @@ interface Props {
   onLogoutClick: () => void;
 }
 
-export function AppHeader({ events, onLogoutClick }: Props) {
+export function AppHeader({ onLogoutClick }: Props) {
   const { user, loading: authLoading, signIn } = useAuth();
-  const { permission, requestPermission } = useNotifications(events);
 
   return (
     <header className="sticky top-0 z-10 bg-[#fefefe]/80 backdrop-blur-md border-b border-[#e5e5e9]">
@@ -28,24 +27,7 @@ export function AppHeader({ events, onLogoutClick }: Props) {
 
         <div className="flex items-center gap-2">
           <InstallPwaButton />
-
-          {user && permission !== 'granted' && typeof window !== 'undefined' && 'Notification' in window && (
-            <button
-              type="button"
-              onClick={requestPermission}
-              className="p-2 text-[#49454F] hover:bg-[#F4EFF4] rounded-full transition-colors"
-              title="Ativar Notificações"
-              aria-label="Ativar Notificações"
-            >
-              <BellOff className="w-5 h-5" />
-            </button>
-          )}
-
-          {user && permission === 'granted' && (
-            <div className="p-2 text-[#49454F]" title="Notificações ativas" aria-label="Notificações ativas">
-              <Bell className="w-5 h-5" />
-            </div>
-          )}
+          <PushNotificationButton />
 
           {authLoading ? null : user ? (
             <button

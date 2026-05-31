@@ -3,16 +3,29 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle } from 'lucide-react';
-import { isPast, isThisMonth, isThisWeek, isToday } from 'date-fns';
+import { format, isPast, isThisMonth, isThisWeek, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/components/AuthProvider';
 import { useAdmin } from '@/hooks/useAdmin';
-import { createEvent, deleteEvent, SchoolEvent, subscribeToEvents, updateEvent } from '@/lib/events';
+import {
+  createEvent,
+  deleteEvent,
+  duplicateEvent,
+  EventHistoryItem,
+  getEventHistory,
+  permanentlyDeleteEvent,
+  restoreEvent,
+  SchoolEvent,
+  subscribeToEvents,
+  updateEvent,
+} from '@/lib/events';
+import { getCachedEventsMeta, loadCachedEvents, saveCachedEvents } from '@/lib/eventCache';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { EventCard } from '@/components/events/EventCard';
 import { EventFilters, EventFilterType } from '@/components/events/EventFilters';
 import { EventSearch } from '@/components/events/EventSearch';
 import { EventFormModal, EventFormPayload } from '@/components/events/EventFormModal';
+import { EventHistoryModal } from '@/components/events/EventHistoryModal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 import { SkeletonCard } from '@/components/ui/SkeletonCard';
@@ -24,6 +37,8 @@ export default function Home() {
   const { isAdmin, loading: adminLoading } = useAdmin();
   const [events, setEvents] = useState<SchoolEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedFromCache, setLoadedFromCache] = useState(false);
+  const [cacheSavedAt, setCacheSavedAt] = useState<Date | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<EventFilterType>('all');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -31,6 +46,9 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<SchoolEvent | null>(null);
   const [eventToDelete, setEventToDelete] = useState<SchoolEvent | null>(null);
+  const [historyEvent, setHistoryEvent] = useState<SchoolEvent | null>(null);
+  const [historyItems, setHistoryItems] = useState<EventHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -38,25 +56,47 @@ export default function Home() {
   const [successMsg, setSuccessMsg] = useState('');
 
   useEffect(() => {
-    if (!isAdmin && filterType === 'hidden') setFilterType('all');
+    if (!isAdmin && (filterType === 'hidden' || filterType === 'trash')) setFilterType('all');
   }, [filterType, isAdmin]);
 
   useEffect(() => {
     if (adminLoading) return;
 
-    setLoading(true);
+    const cachedEvents = loadCachedEvents({ includeDeleted: isAdmin, includePrivate: isAdmin });
+    const cacheMeta = getCachedEventsMeta();
+
+    if (cachedEvents.length > 0) {
+      setEvents(cachedEvents);
+      setLoadedFromCache(true);
+      setCacheSavedAt(cacheMeta?.savedAt || null);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     setFirebaseError('');
 
     const unsubscribe = subscribeToEvents(
       isAdmin,
       data => {
         setEvents(data);
+        saveCachedEvents(data);
+        setLoadedFromCache(false);
+        setCacheSavedAt(new Date());
         setLoading(false);
         setFirebaseError('');
       },
       err => {
         console.error(err);
-        setFirebaseError('Não foi possível carregar os eventos. Verifique as regras e índices do Firestore.');
+        const fallback = loadCachedEvents({ includeDeleted: isAdmin, includePrivate: isAdmin });
+        if (fallback.length > 0) {
+          setEvents(fallback);
+          setLoadedFromCache(true);
+          setCacheSavedAt(getCachedEventsMeta()?.savedAt || null);
+          setFirebaseError('Sem conexão com o Firebase. Mostrando os últimos eventos salvos neste dispositivo.');
+        } else {
+          setFirebaseError('Não foi possível carregar os eventos. Verifique as regras, índices ou conexão do Firestore.');
+        }
         setLoading(false);
       },
     );
@@ -65,13 +105,16 @@ export default function Home() {
   }, [adminLoading, isAdmin]);
 
   const eventStats = useMemo(() => {
-    const upcoming = events.filter(event => !isPast(event.date)).length;
-    const today = events.filter(event => isToday(event.date)).length;
-    const week = events.filter(event => !isPast(event.date) && isThisWeek(event.date, { locale: ptBR })).length;
-    const hidden = events.filter(event => !event.isPublic).length;
-    const past = events.filter(event => isPast(event.date)).length;
+    const activeEvents = events.filter(event => !event.deletedAt);
+    const upcoming = activeEvents.filter(event => !isPast(event.date)).length;
+    const today = activeEvents.filter(event => isToday(event.date)).length;
+    const week = activeEvents.filter(event => !isPast(event.date) && isThisWeek(event.date, { locale: ptBR })).length;
+    const hidden = activeEvents.filter(event => !event.isPublic).length;
+    const pinned = activeEvents.filter(event => event.isPinned).length;
+    const trash = events.filter(event => event.deletedAt).length;
+    const past = activeEvents.filter(event => isPast(event.date)).length;
 
-    return { upcoming, today, week, hidden, past };
+    return { upcoming, today, week, hidden, pinned, trash, past };
   }, [events]);
 
   const filteredEvents = useMemo(() => {
@@ -82,9 +125,12 @@ export default function Home() {
         !normalizedSearch ||
         event.title.toLowerCase().includes(normalizedSearch) ||
         event.description?.toLowerCase().includes(normalizedSearch) ||
-        event.category?.toLowerCase().includes(normalizedSearch);
+        event.category?.toLowerCase().includes(normalizedSearch) ||
+        event.priority?.toLowerCase().includes(normalizedSearch);
 
       if (!matchesSearch) return false;
+      if (filterType === 'trash') return Boolean(event.deletedAt);
+      if (event.deletedAt) return false;
       if (filterType === 'hidden') return !event.isPublic;
       if (filterType === 'past') return isPast(event.date);
       if (filterType !== 'all' && isPast(event.date)) return false;
@@ -142,13 +188,80 @@ export default function Home() {
     }
   }
 
+  async function handleDuplicateEvent(event: SchoolEvent) {
+    try {
+      await duplicateEvent(event);
+      setFilterType('hidden');
+      showSuccess('Evento duplicado como rascunho.');
+    } catch (error) {
+      console.error(error);
+      setFirebaseError('Não foi possível duplicar o evento.');
+    }
+  }
+
+  async function handleRestoreEvent(event: SchoolEvent) {
+    try {
+      await restoreEvent(event.id, event.title);
+      showSuccess('Evento restaurado como rascunho. Revise antes de publicar.');
+    } catch (error) {
+      console.error(error);
+      setFirebaseError('Não foi possível restaurar o evento.');
+    }
+  }
+
+  async function handleHistoryEvent(event: SchoolEvent) {
+    setHistoryEvent(event);
+    setHistoryItems([]);
+    setHistoryLoading(true);
+
+    try {
+      const items = await getEventHistory(event.id);
+      setHistoryItems(items);
+    } catch (error) {
+      console.error(error);
+      setFirebaseError('Não foi possível carregar o histórico do evento.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function handleShareEvent(event: SchoolEvent) {
+    const eventUrl = typeof window !== 'undefined' ? `${window.location.origin}/?event=${event.id}` : '';
+    const shareText = [
+      `📌 ${event.title}`,
+      `📅 ${format(event.date, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
+      event.category ? `🏷️ ${event.category}` : '',
+      event.priority !== 'normal' ? `⭐ ${event.priority}` : '',
+      event.description ? `📝 ${event.description}` : '',
+      eventUrl,
+    ].filter(Boolean).join('\n');
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: event.title, text: shareText, url: eventUrl });
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareText);
+      showSuccess('Evento copiado para compartilhar.');
+    } catch (error) {
+      console.error(error);
+      setFirebaseError('Não foi possível compartilhar o evento neste navegador.');
+    }
+  }
+
   async function confirmDelete() {
     if (!eventToDelete) return;
 
     try {
-      await deleteEvent(eventToDelete.id);
+      if (eventToDelete.deletedAt) {
+        await permanentlyDeleteEvent(eventToDelete.id, eventToDelete.title);
+        showSuccess('Evento excluído permanentemente.');
+      } else {
+        await deleteEvent(eventToDelete.id, eventToDelete.title);
+        showSuccess('Evento movido para a lixeira.');
+      }
       setEventToDelete(null);
-      showSuccess('Evento excluído com sucesso!');
     } catch (error) {
       console.error(error);
       setFirebaseError('Não foi possível excluir o evento. Verifique sua permissão de administrador.');
@@ -183,7 +296,12 @@ export default function Home() {
             <div>
               <h2 className="text-xl font-medium tracking-tight">Mural de Eventos</h2>
               {isAdmin && (
-                <p className="text-sm text-[#49454F] mt-1">Modo admin ativo: você pode criar, editar, ocultar e excluir eventos.</p>
+                <p className="text-sm text-[#49454F] mt-1">Modo admin ativo: criar, editar, fixar, duplicar, restaurar e acompanhar histórico.</p>
+              )}
+              {loadedFromCache && (
+                <p className="text-xs text-[#49454F] mt-1">
+                  Mostrando cache offline{cacheSavedAt ? ` de ${format(cacheSavedAt, "dd/MM 'às' HH:mm")}` : ''}.
+                </p>
               )}
             </div>
             <EventSearch searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
@@ -192,8 +310,8 @@ export default function Home() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard label="Próximos" value={eventStats.upcoming} />
             <StatCard label="Hoje" value={eventStats.today} />
-            <StatCard label="Semana" value={eventStats.week} />
-            <StatCard label={isAdmin ? 'Rascunhos' : 'Finalizados'} value={isAdmin ? eventStats.hidden : eventStats.past} />
+            <StatCard label="Fixados" value={eventStats.pinned} />
+            <StatCard label={isAdmin ? 'Lixeira' : 'Finalizados'} value={isAdmin ? eventStats.trash : eventStats.past} />
           </div>
 
           {firebaseError && (
@@ -220,7 +338,7 @@ export default function Home() {
             {[1, 2, 3, 4].map(item => <SkeletonCard key={item} />)}
           </div>
         ) : filteredEvents.length === 0 ? (
-          <EmptyState isAdmin={isAdmin} onActionClick={openCreateModal} />
+          <EmptyState isAdmin={isAdmin && filterType !== 'trash'} onActionClick={openCreateModal} />
         ) : (
           <div className={`mt-8 grid gap-4 ${layoutView === 'grid' ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
             <AnimatePresence mode="popLayout">
@@ -231,13 +349,17 @@ export default function Home() {
                   isAdmin={isAdmin}
                   onDeleteClick={setEventToDelete}
                   onEditClick={openEditModal}
+                  onDuplicateClick={handleDuplicateEvent}
+                  onHistoryClick={handleHistoryEvent}
+                  onRestoreClick={handleRestoreEvent}
+                  onShareClick={handleShareEvent}
                 />
               ))}
             </AnimatePresence>
           </div>
         )}
 
-        {isAdmin && <FloatingActionButton onClick={openCreateModal} />}
+        {isAdmin && filterType !== 'trash' && <FloatingActionButton onClick={openCreateModal} />}
       </main>
 
       <AnimatePresence>
@@ -251,11 +373,22 @@ export default function Home() {
           />
         )}
 
+        {historyEvent && (
+          <EventHistoryModal
+            event={historyEvent}
+            items={historyItems}
+            loading={historyLoading}
+            onClose={() => setHistoryEvent(null)}
+          />
+        )}
+
         {eventToDelete && (
           <ConfirmModal
-            title="Excluir evento?"
-            description={`Você está prestes a excluir “${eventToDelete.title}”. Essa ação não pode ser desfeita.`}
-            confirmLabel="Excluir"
+            title={eventToDelete.deletedAt ? 'Excluir permanentemente?' : 'Mover para lixeira?'}
+            description={eventToDelete.deletedAt
+              ? `“${eventToDelete.title}” será excluído permanentemente. Essa ação não pode ser desfeita.`
+              : `“${eventToDelete.title}” sairá do mural, mas poderá ser restaurado pela lixeira.`}
+            confirmLabel={eventToDelete.deletedAt ? 'Excluir de vez' : 'Mover'}
             onCancel={() => setEventToDelete(null)}
             onConfirm={confirmDelete}
             danger

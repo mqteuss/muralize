@@ -15,7 +15,7 @@ const firebaseConfig = {
 
 const databaseId = process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID || backupConfig.firestoreDatabaseId || '(default)';
 
-let app;
+export let app;
 try {
   app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 } catch (e) {

@@ -12,15 +12,54 @@
         "authorId": { "type": "string" },
         "createdAt": { "type": "timestamp" },
         "updatedAt": { "type": "timestamp" },
-        "isPublic": { "type": "boolean" }
+        "updatedBy": { "type": "string" },
+        "isPublic": { "type": "boolean" },
+        "isPinned": { "type": "boolean" },
+        "priority": { "type": "normal | importante | urgente" },
+        "deletedAt": { "type": "timestamp" },
+        "deletedBy": { "type": "string" },
+        "duplicatedFrom": { "type": "string" }
       },
-      "required": ["title", "date", "authorId", "createdAt", "isPublic"]
+      "required": ["title", "date", "authorId", "createdAt", "isPublic", "isPinned", "priority"]
+    },
+    "EventHistory": {
+      "title": "Event History",
+      "description": "Audit trail for admin operations on events.",
+      "properties": {
+        "eventId": { "type": "string" },
+        "action": { "type": "created | updated | duplicated | deleted | restored | permanently_deleted" },
+        "actorId": { "type": "string" },
+        "at": { "type": "timestamp" },
+        "title": { "type": "string" },
+        "snapshot": { "type": "object" }
+      }
+    },
+    "NotificationSubscription": {
+      "title": "Notification Subscription",
+      "description": "Browser FCM token for Web Push notifications.",
+      "properties": {
+        "token": { "type": "string" },
+        "uid": { "type": "string | null" },
+        "email": { "type": "string | null" },
+        "userAgent": { "type": "string" },
+        "permission": { "type": "granted" },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" }
+      }
     }
   },
   "firestore": {
     "/events/{eventId}": {
       "schema": { "$ref": "#/entities/SchoolEvent" },
-      "description": "Collection of school events, including public events and admin-only drafts."
+      "description": "Collection of school events, including pinned items, drafts and soft-deleted items."
+    },
+    "/eventHistory/{historyId}": {
+      "schema": { "$ref": "#/entities/EventHistory" },
+      "description": "Append-only history for admin actions."
+    },
+    "/notificationSubscriptions/{subscriptionId}": {
+      "schema": { "$ref": "#/entities/NotificationSubscription" },
+      "description": "FCM web push browser subscriptions."
     }
   }
 }

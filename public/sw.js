@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'muralize-pwa-v1';
+const CACHE_VERSION = 'muralize-pwa-v2';
 const PRECACHE = `${CACHE_VERSION}-precache`;
 const RUNTIME = `${CACHE_VERSION}-runtime`;
 const OFFLINE_URL = '/offline.html';
@@ -22,7 +22,9 @@ const PRECACHE_URLS = [
   '/icons/icon-512x512.png',
   '/icons/maskable-icon-192x192.png',
   '/icons/maskable-icon-512x512.png',
-  '/icons/badge-72x72.png'
+  '/icons/badge-72x72.png',
+  '/screenshots/muralize-mobile.png',
+  '/screenshots/muralize-desktop.png'
 ];
 
 self.addEventListener('install', event => {
@@ -102,6 +104,7 @@ self.addEventListener('fetch', event => {
     url.pathname.startsWith('/_next/static/') ||
     url.pathname.startsWith('/icons/') ||
     url.pathname.startsWith('/brand/') ||
+    url.pathname.startsWith('/screenshots/') ||
     url.pathname === '/favicon.ico' ||
     url.pathname === '/apple-touch-icon.png' ||
     url.pathname === '/manifest.webmanifest'
@@ -111,6 +114,51 @@ self.addEventListener('fetch', event => {
   }
 
   event.respondWith(staleWhileRevalidate(request));
+});
+
+self.addEventListener('push', event => {
+  let payload = {};
+
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (error) {
+    payload = { notification: { title: 'Muralize', body: event.data ? event.data.text() : 'Novo aviso disponível.' } };
+  }
+
+  const notification = payload.notification || {};
+  const data = payload.data || {};
+  const title = notification.title || data.title || 'Muralize';
+  const body = notification.body || data.body || 'Novo aviso no mural escolar.';
+  const url = data.url || payload.fcmOptions?.link || '/';
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: notification.icon || '/icons/icon-192x192.png',
+      badge: '/icons/badge-72x72.png',
+      image: notification.image,
+      tag: data.tag || 'muralize-notification',
+      renotify: true,
+      data: { url },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+
+  const targetUrl = event.notification.data?.url || '/';
+  const absoluteUrl = new URL(targetUrl, self.location.origin).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+      for (const client of clients) {
+        if ('focus' in client && client.url === absoluteUrl) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(absoluteUrl);
+      return undefined;
+    })
+  );
 });
 
 self.addEventListener('message', event => {
