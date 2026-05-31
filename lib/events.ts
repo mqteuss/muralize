@@ -15,7 +15,6 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { notifyEventChange, type NotificationEventSnapshot } from './notificationClient';
 
 export type EventPriority = 'normal' | 'importante' | 'urgente';
 export type EventHistoryAction = 'created' | 'updated' | 'duplicated' | 'deleted' | 'restored' | 'permanently_deleted';
@@ -176,28 +175,6 @@ function eventSnapshot(event: Partial<SchoolEvent>) {
   };
 }
 
-function notificationSnapshot(event?: Partial<SchoolEvent> | null): NotificationEventSnapshot | null {
-  if (!event) return null;
-
-  return {
-    id: event.id,
-    title: event.title,
-    description: event.description,
-    category: event.category,
-    date: event.date instanceof Date ? event.date.toISOString() : undefined,
-    isPublic: event.isPublic,
-    isPinned: event.isPinned,
-    priority: event.priority,
-    deletedAt: event.deletedAt instanceof Date ? event.deletedAt.toISOString() : null,
-  };
-}
-
-function notifyEventSafely(input: Parameters<typeof notifyEventChange>[0]) {
-  notifyEventChange(input).catch(error => {
-    console.warn('Falha ao solicitar envio de notificação.', error);
-  });
-}
-
 async function writeHistory(eventId: string, action: EventHistoryAction, title: string, snapshot?: Partial<SchoolEvent>) {
   const user = requireCurrentUser();
 
@@ -228,8 +205,6 @@ export async function createEvent(id: string, event: CreateSchoolEventInput) {
     isPinned: sanitized.isPinned,
     priority: sanitized.priority,
   }).catch(error => console.warn('Falha ao registrar histórico de criação.', error));
-
-  notifyEventSafely({ eventId: id, action: 'created' });
 }
 
 export async function updateEvent(id: string, event: UpdateSchoolEventInput) {
@@ -251,12 +226,6 @@ export async function updateEvent(id: string, event: UpdateSchoolEventInput) {
     isPinned: sanitized.isPinned,
     priority: sanitized.priority,
   }).catch(error => console.warn('Falha ao registrar histórico de atualização.', error));
-
-  notifyEventSafely({
-    eventId: id,
-    action: 'updated',
-    previousEvent: notificationSnapshot(previousEvent),
-  });
 }
 
 export async function duplicateEvent(event: SchoolEvent) {

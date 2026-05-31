@@ -5,8 +5,8 @@ import { adminAuth, adminDb, adminMessaging } from '@/lib/firebaseAdmin';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-type NotificationAction = 'created' | 'updated';
-type DirectNotificationType = 'created' | 'published' | 'priority_up' | 'rescheduled';
+type LegacyAction = 'created' | 'updated';
+type NotificationType = 'created' | 'published' | 'priority_up' | 'rescheduled';
 type Priority = 'normal' | 'importante' | 'urgente';
 
 interface EventSnapshot {
@@ -21,21 +21,20 @@ interface EventSnapshot {
   deletedAt?: unknown;
 }
 
-interface RequestBody {
+interface LegacyRequestBody {
   eventId?: string;
-  action?: NotificationAction;
+  action?: LegacyAction;
   previousEvent?: EventSnapshot | null;
-  type?: DirectNotificationType;
-  event?: EventSnapshot;
+}
+
+interface DirectRequestBody {
+  type?: NotificationType;
+  event?: EventSnapshot & { id?: string };
+  previousEvent?: EventSnapshot | null;
   dedupeKey?: string;
 }
 
-interface BuiltNotification {
-  reason: string;
-  logId: string;
-  title: string;
-  body: string;
-}
+type RequestBody = LegacyRequestBody & DirectRequestBody;
 
 function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status });
@@ -52,6 +51,10 @@ function normalizeDate(value: unknown): Date | null {
   if (value instanceof Timestamp) return value.toDate();
   if (typeof value === 'object' && value !== null && 'toDate' in value && typeof (value as any).toDate === 'function') {
     return (value as any).toDate();
+  }
+  if (typeof value === 'object' && value !== null && '_seconds' in value) {
+    const seconds = Number((value as any)._seconds);
+    if (!Number.isNaN(seconds)) return new Date(seconds * 1000);
   }
   if (typeof value === 'string' || typeof value === 'number') {
     const date = new Date(value);
@@ -82,77 +85,36 @@ function normalizePriority(value: unknown): Priority {
   return 'normal';
 }
 
-function buildNotification(action: NotificationAction, event: EventSnapshot, previousEvent?: EventSnapshot | null): BuiltNotification | null {
+function normalizeEventFromFirestore(id: string, data: Record<string, unknown>): EventSnapshot {
+  return {
+    id,
+    title: typeof data.title === 'string' ? data.title : '',
+    description: typeof data.description === 'string' ? data.description : '',
+    category: typeof data.category === 'string' ? data.category : '',
+    date: data.date,
+    isPublic: data.isPublic === true,
+    isPinned: data.isPinned === true,
+    priority: normalizePriority(data.priority),
+    deletedAt: data.deletedAt,
+  };
+}
+
+function notificationFromType(type: NotificationType, event: EventSnapshot, dedupeKey?: string) {
+  if (!event.id) return null;
   if (event.deletedAt) return null;
   if (event.isPublic !== true) return null;
 
   const title = event.title || 'Novo evento';
   const description = event.description || event.category || 'Confira os detalhes no Muralize.';
   const priority = normalizePriority(event.priority);
-  const previousPriority = normalizePriority(previousEvent?.priority);
-  const wasPublic = previousEvent?.isPublic === true;
-  const dateChanged = Boolean(previousEvent) && toMillis(previousEvent?.date) !== toMillis(event.date);
-  const becamePublic = action === 'updated' && previousEvent?.isPublic === false && event.isPublic === true;
-  const priorityRaised = action === 'updated'
-    && priority !== previousPriority
-    && (priority === 'importante' || priority === 'urgente')
-    && previousPriority !== 'urgente';
-
-  if (action === 'created') {
-    return {
-      reason: 'created',
-      logId: `created-${event.id}`,
-      title: 'Novo evento no Muralize',
-      body: `${title}${event.date ? ` • ${formatDate(event.date)}` : ''}`,
-    };
-  }
-
-  if (becamePublic) {
-    return {
-      reason: 'published',
-      logId: `published-${event.id}-${toMillis(event.date)}`,
-      title: 'Evento publicado no Muralize',
-      body: `${title}${event.date ? ` • ${formatDate(event.date)}` : ''}`,
-    };
-  }
-
-  if (priorityRaised) {
-    return {
-      reason: 'priority',
-      logId: `priority-${event.id}-${priority}-${toMillis(event.date)}`,
-      title: priority === 'urgente' ? 'Evento urgente no Muralize' : 'Evento importante no Muralize',
-      body: `${title}: ${description}`,
-    };
-  }
-
-  if (wasPublic && dateChanged) {
-    return {
-      reason: 'rescheduled',
-      logId: `rescheduled-${event.id}-${toMillis(event.date)}`,
-      title: 'Evento atualizado no Muralize',
-      body: `${title} agora está para ${formatDate(event.date)}.`,
-    };
-  }
-
-  return null;
-}
-
-function buildDirectNotification(type: DirectNotificationType, event: EventSnapshot, dedupeKey?: string): BuiltNotification | null {
-  if (!event.id) return null;
-  if (event.deletedAt) return null;
-  if (event.isPublic !== true) return null;
-
-  const eventTitle = event.title || 'Evento no Muralize';
-  const description = event.description || event.category || 'Confira os detalhes no Muralize.';
-  const priority = normalizePriority(event.priority);
-  const dateSuffix = event.date ? ` • ${formatDate(event.date)}` : '';
+  const formattedDate = event.date ? formatDate(event.date) : '';
 
   if (type === 'created') {
     return {
       reason: 'created',
       logId: dedupeKey || `created-${event.id}`,
       title: 'Novo evento no Muralize',
-      body: `${eventTitle}${dateSuffix}`,
+      body: `${title}${formattedDate ? ` • ${formattedDate}` : ''}`,
     };
   }
 
@@ -161,7 +123,7 @@ function buildDirectNotification(type: DirectNotificationType, event: EventSnaps
       reason: 'published',
       logId: dedupeKey || `published-${event.id}-${toMillis(event.date)}`,
       title: 'Evento publicado no Muralize',
-      body: `${eventTitle}${dateSuffix}`,
+      body: `${title}${formattedDate ? ` • ${formattedDate}` : ''}`,
     };
   }
 
@@ -170,7 +132,7 @@ function buildDirectNotification(type: DirectNotificationType, event: EventSnaps
       reason: 'priority',
       logId: dedupeKey || `priority-${event.id}-${priority}-${toMillis(event.date)}`,
       title: priority === 'urgente' ? 'Evento urgente no Muralize' : 'Evento importante no Muralize',
-      body: `${eventTitle}: ${description}`,
+      body: `${title}: ${description}`,
     };
   }
 
@@ -179,9 +141,31 @@ function buildDirectNotification(type: DirectNotificationType, event: EventSnaps
       reason: 'rescheduled',
       logId: dedupeKey || `rescheduled-${event.id}-${toMillis(event.date)}`,
       title: 'Evento atualizado no Muralize',
-      body: `${eventTitle} agora está para ${formatDate(event.date)}.`,
+      body: `${title}${formattedDate ? ` agora está para ${formattedDate}.` : ' teve a data alterada.'}`,
     };
   }
+
+  return null;
+}
+
+function inferNotificationFromLegacy(action: LegacyAction, event: EventSnapshot, previousEvent?: EventSnapshot | null) {
+  if (event.deletedAt) return null;
+  if (event.isPublic !== true) return null;
+
+  if (action === 'created') return notificationFromType('created', event);
+
+  const priority = normalizePriority(event.priority);
+  const previousPriority = normalizePriority(previousEvent?.priority);
+  const wasPublic = previousEvent?.isPublic === true;
+  const becamePublic = previousEvent?.isPublic === false && event.isPublic === true;
+  const dateChanged = Boolean(previousEvent) && toMillis(previousEvent?.date) !== toMillis(event.date);
+  const priorityRaised = priority !== previousPriority
+    && (priority === 'importante' || priority === 'urgente')
+    && previousPriority !== 'urgente';
+
+  if (becamePublic) return notificationFromType('published', event);
+  if (priorityRaised) return notificationFromType('priority_up', event);
+  if (wasPublic && dateChanged) return notificationFromType('rescheduled', event);
 
   return null;
 }
@@ -210,7 +194,7 @@ async function getSubscriptions() {
   return subscriptions;
 }
 
-async function markNotificationLog(logId: string, data: Record<string, unknown>) {
+async function createNotificationLog(logId: string, data: Record<string, unknown>) {
   const ref = adminDb.collection('notificationLogs').doc(logId);
   const existing = await ref.get();
 
@@ -224,84 +208,75 @@ async function markNotificationLog(logId: string, data: Record<string, unknown>)
   return true;
 }
 
+async function updateNotificationLog(logId: string, data: Record<string, unknown>) {
+  await adminDb.collection('notificationLogs').doc(logId).set({
+    ...data,
+    updatedAt: Timestamp.now(),
+  }, { merge: true });
+}
+
 export async function GET() {
   return json({ ok: false, message: 'Use POST para enviar notificações de eventos.' }, 405);
 }
 
 export async function POST(request: NextRequest) {
+  let logId: string | null = null;
+
   try {
     const token = getBearerToken(request);
 
-    if (!token) {
-      return json({ ok: false, error: 'missing_auth_token' }, 401);
-    }
+    if (!token) return json({ ok: false, error: 'missing_auth_token' }, 401);
 
     const decodedToken = await adminAuth.verifyIdToken(token);
     const admin = await assertAdmin(decodedToken.uid);
 
-    if (!admin) {
-      return json({ ok: false, error: 'not_admin' }, 403);
-    }
+    if (!admin) return json({ ok: false, error: 'not_admin' }, 403);
 
     const body = (await request.json()) as RequestBody;
-    let eventId = body.eventId;
-    let action: NotificationAction | undefined = body.action;
     let event: EventSnapshot | null = null;
-    let notification: BuiltNotification | null = null;
+    let notification: ReturnType<typeof notificationFromType> | null = null;
 
     if (body.type && body.event?.id) {
-      eventId = body.event.id;
-      action = body.type === 'created' ? 'created' : 'updated';
-      event = { id: body.event.id, ...body.event };
-      notification = buildDirectNotification(body.type, event, body.dedupeKey);
+      event = body.event;
+      notification = notificationFromType(body.type, event, body.dedupeKey);
+    } else if (body.eventId && (body.action === 'created' || body.action === 'updated')) {
+      const eventDocument = await adminDb.collection('events').doc(body.eventId).get();
+      if (!eventDocument.exists) return json({ ok: false, error: 'event_not_found' }, 404);
+      event = normalizeEventFromFirestore(eventDocument.id, eventDocument.data());
+      notification = inferNotificationFromLegacy(body.action, event, body.previousEvent);
     } else {
-      if (!eventId || (action !== 'created' && action !== 'updated')) {
-        return json({ ok: false, error: 'invalid_payload' }, 400);
-      }
-
-      const eventDocument = await adminDb.collection('events').doc(eventId).get();
-
-      if (!eventDocument.exists) {
-        return json({ ok: false, error: 'event_not_found' }, 404);
-      }
-
-      event = { id: eventDocument.id, ...eventDocument.data() } as EventSnapshot;
-      notification = buildNotification(action, event, body.previousEvent);
-    }
-
-    if (!eventId || !action || !event) {
       return json({ ok: false, error: 'invalid_payload' }, 400);
     }
+
+    if (!event?.id) return json({ ok: false, error: 'missing_event_id' }, 400);
 
     if (!notification) {
       return json({ ok: true, skipped: true, reason: 'no_notification_needed' });
     }
 
-    const shouldSend = await markNotificationLog(notification.logId, {
-      eventId,
-      action,
+    logId = notification.logId;
+    const shouldSend = await createNotificationLog(logId, {
+      eventId: event.id,
       reason: notification.reason,
       actorId: decodedToken.uid,
       status: 'started',
     });
 
-    if (!shouldSend) {
-      return json({ ok: true, skipped: true, reason: 'duplicate' });
-    }
+    if (!shouldSend) return json({ ok: true, skipped: true, reason: 'duplicate' });
 
     const subscriptions = await getSubscriptions();
 
     if (subscriptions.length === 0) {
-      await adminDb.collection('notificationLogs').doc(notification.logId).update({
+      await updateNotificationLog(logId, {
         status: 'no_tokens',
         finishedAt: Timestamp.now(),
       });
-
       return json({ ok: true, sent: 0, reason: 'no_tokens' });
     }
 
     const appUrl = process.env.MURALIZE_APP_URL || request.nextUrl.origin;
     const tokens = subscriptions.map(subscription => subscription.token);
+    const priority = normalizePriority(event.priority);
 
     const result = await adminMessaging.sendEachForMulticast({
       tokens,
@@ -316,14 +291,13 @@ export async function POST(request: NextRequest) {
         notification: {
           icon: `${appUrl}/icons/icon-192x192.png`,
           badge: `${appUrl}/icons/icon-96x96.png`,
-          tag: notification.logId,
+          tag: logId,
           renotify: false,
-          requireInteraction: normalizePriority(event.priority) === 'urgente',
+          requireInteraction: priority === 'urgente',
         },
       },
       data: {
-        eventId,
-        action,
+        eventId: event.id,
         reason: notification.reason,
       },
     });
@@ -344,7 +318,7 @@ export async function POST(request: NextRequest) {
 
     await Promise.allSettled(deletions);
 
-    await adminDb.collection('notificationLogs').doc(notification.logId).update({
+    await updateNotificationLog(logId, {
       status: 'sent',
       successCount: result.successCount,
       failureCount: result.failureCount,
@@ -362,6 +336,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Erro ao enviar notificação de evento:', error);
+
+    if (logId) {
+      await updateNotificationLog(logId, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+        finishedAt: Timestamp.now(),
+      }).catch(() => null);
+    }
 
     return json({
       ok: false,

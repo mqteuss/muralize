@@ -36,7 +36,7 @@ async function postNotificationPayload(payload: NotifyEventChangeInput | NotifyE
     return null;
   }
 
-  const idToken = await user.getIdToken();
+  const idToken = await user.getIdToken(true);
 
   const response = await fetch('/api/notifications/events', {
     method: 'POST',
@@ -45,14 +45,14 @@ async function postNotificationPayload(payload: NotifyEventChangeInput | NotifyE
       Authorization: `Bearer ${idToken}`,
     },
     body: JSON.stringify(payload),
+    cache: 'no-store',
+    keepalive: true,
   });
 
-  let data: unknown = null;
-  try {
-    data = await response.json();
-  } catch {
-    data = await response.text().catch(() => null);
-  }
+  const contentType = response.headers.get('content-type') || '';
+  const data = contentType.includes('application/json')
+    ? await response.json().catch(() => null)
+    : await response.text().catch(() => null);
 
   if (!response.ok) {
     console.error('Falha na API de notificações.', response.status, data);
