@@ -43,6 +43,30 @@ service cloud.firestore {
       (!('duplicatedFrom' in data) || data.duplicatedFrom is string);
     }
 
+    function changedEventKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function isValidEventPatch(data) {
+      return changedEventKeys().hasOnly([
+        'title', 'description', 'category', 'date', 'updatedAt', 'updatedBy',
+        'isPublic', 'isPinned', 'priority', 'deletedAt', 'deletedBy', 'duplicatedFrom'
+      ]) &&
+      !changedEventKeys().hasAny(['authorId', 'createdAt']) &&
+      (!('title' in data) || (data.title is string && data.title.size() > 0 && data.title.size() <= 100)) &&
+      (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
+      (!('category' in data) || (data.category is string && data.category.size() <= 50)) &&
+      (!('date' in data) || data.date is timestamp) &&
+      (!('updatedAt' in data) || data.updatedAt is timestamp) &&
+      (!('updatedBy' in data) || data.updatedBy is string) &&
+      (!('isPublic' in data) || data.isPublic is bool) &&
+      (!('isPinned' in data) || data.isPinned is bool) &&
+      (!('priority' in data) || isValidPriority(data.priority)) &&
+      (!('deletedAt' in data) || data.deletedAt is timestamp) &&
+      (!('deletedBy' in data) || data.deletedBy is string) &&
+      (!('duplicatedFrom' in data) || data.duplicatedFrom is string);
+    }
+
     function isValidHistory(data) {
       return data.keys().hasAll(['eventId', 'action', 'actorId', 'at', 'title']) &&
       data.keys().hasOnly(['eventId', 'action', 'actorId', 'at', 'title', 'snapshot']) &&
@@ -70,16 +94,14 @@ service cloud.firestore {
     }
 
     match /events/{eventId} {
-      allow read: if isAdmin() || resource.data.isPublic == true;
+      allow read: if isAdmin() || (resource.data.isPublic == true && !('deletedAt' in resource.data));
       allow create: if isAdmin()
         && isValidId(eventId)
         && isValidSchoolEvent(request.resource.data)
         && request.resource.data.authorId == request.auth.uid;
       allow update: if isAdmin()
         && isValidId(eventId)
-        && isValidSchoolEvent(request.resource.data)
-        && request.resource.data.authorId == resource.data.authorId
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && isValidEventPatch(request.resource.data);
       allow delete: if isAdmin() && isValidId(eventId);
     }
 
