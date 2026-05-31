@@ -12,7 +12,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\-]+$');
     }
 
     function isValidPriority(priority) {
@@ -31,8 +31,10 @@ service cloud.firestore {
       (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
       (!('category' in data) || (data.category is string && data.category.size() <= 50)) &&
       data.date is timestamp &&
-      data.authorId is string &&
+      data.authorId == request.auth.uid &&
       data.createdAt is timestamp &&
+      data.createdAt <= request.time &&
+      data.createdAt >= request.time - duration.value(10, 'm') &&
       (!('updatedAt' in data) || data.updatedAt is timestamp) &&
       (!('updatedBy' in data) || data.updatedBy is string) &&
       data.isPublic is bool &&
@@ -57,13 +59,13 @@ service cloud.firestore {
       (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
       (!('category' in data) || (data.category is string && data.category.size() <= 50)) &&
       (!('date' in data) || data.date is timestamp) &&
-      (!('updatedAt' in data) || data.updatedAt is timestamp) &&
-      (!('updatedBy' in data) || data.updatedBy is string) &&
+      (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time && data.updatedAt >= request.time - duration.value(10, 'm'))) &&
+      (!('updatedBy' in data) || data.updatedBy == request.auth.uid) &&
       (!('isPublic' in data) || data.isPublic is bool) &&
       (!('isPinned' in data) || data.isPinned is bool) &&
       (!('priority' in data) || isValidPriority(data.priority)) &&
-      (!('deletedAt' in data) || data.deletedAt is timestamp) &&
-      (!('deletedBy' in data) || data.deletedBy is string) &&
+      (!('deletedAt' in data) || (data.deletedAt is timestamp && data.deletedAt <= request.time && data.deletedAt >= request.time - duration.value(10, 'm'))) &&
+      (!('deletedBy' in data) || data.deletedBy == request.auth.uid) &&
       (!('duplicatedFrom' in data) || data.duplicatedFrom is string);
     }
 
@@ -75,22 +77,42 @@ service cloud.firestore {
       data.action in ['created', 'updated', 'duplicated', 'deleted', 'restored', 'permanently_deleted'] &&
       data.actorId == request.auth.uid &&
       data.at is timestamp &&
+      data.at <= request.time &&
+      data.at >= request.time - duration.value(10, 'm') &&
       data.title is string &&
       data.title.size() <= 120;
     }
 
-    function isValidSubscription(data) {
-      return data.keys().hasAll(['token', 'permission', 'createdAt', 'updatedAt']) &&
-      data.keys().hasOnly(['token', 'uid', 'email', 'userAgent', 'permission', 'createdAt', 'updatedAt']) &&
+    function subscriptionOwnerIsValid(data) {
+      return !isSignedIn() || !('uid' in data) || data.uid == request.auth.uid;
+    }
+
+    function isValidSubscription(data, subscriptionId) {
+      return isValidId(subscriptionId) &&
+      data.keys().hasAll(['token', 'tokenHash', 'permission', 'createdAt', 'updatedAt']) &&
+      data.keys().hasOnly(['token', 'tokenHash', 'uid', 'email', 'userAgent', 'permission', 'createdAt', 'updatedAt']) &&
       data.token is string &&
       data.token.size() > 20 &&
       data.token.size() <= 4096 &&
+      data.tokenHash == subscriptionId &&
       data.permission == 'granted' &&
       data.createdAt is timestamp &&
+      data.createdAt <= request.time &&
+      data.createdAt >= request.time - duration.value(10, 'm') &&
       data.updatedAt is timestamp &&
+      data.updatedAt <= request.time &&
+      data.updatedAt >= request.time - duration.value(10, 'm') &&
+      subscriptionOwnerIsValid(data) &&
       (!('uid' in data) || data.uid == null || data.uid is string) &&
-      (!('email' in data) || data.email == null || data.email is string) &&
+      (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 254)) &&
       (!('userAgent' in data) || (data.userAgent is string && data.userAgent.size() <= 300));
+    }
+
+    function isValidSubscriptionUpdate(data, subscriptionId) {
+      return isValidSubscription(data, subscriptionId) &&
+      data.createdAt == resource.data.createdAt &&
+      data.tokenHash == resource.data.tokenHash &&
+      data.token == resource.data.token;
     }
 
     match /events/{eventId} {
@@ -98,8 +120,7 @@ service cloud.firestore {
 
       allow create: if isAdmin()
         && isValidId(eventId)
-        && isValidSchoolEvent(request.resource.data)
-        && request.resource.data.authorId == request.auth.uid;
+        && isValidSchoolEvent(request.resource.data);
 
       allow update: if isAdmin()
         && isValidId(eventId)
@@ -115,7 +136,8 @@ service cloud.firestore {
     }
 
     match /notificationSubscriptions/{subscriptionId} {
-      allow create, update: if isValidSubscription(request.resource.data);
+      allow create: if isValidSubscription(request.resource.data, subscriptionId);
+      allow update: if isValidSubscriptionUpdate(request.resource.data, subscriptionId);
       allow read, delete: if isAdmin();
     }
 
