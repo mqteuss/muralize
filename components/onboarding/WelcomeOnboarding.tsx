@@ -7,7 +7,8 @@ import { InstallPwaButton } from '@/components/pwa/InstallPwaButton';
 import { BaseModal } from '@/components/ui/BaseModal';
 
 interface Props {
-  onFinish: () => void;
+  onFinish?: () => void;
+  onClose?: () => void;
 }
 
 const steps = [
@@ -38,17 +39,18 @@ const steps = [
   },
 ];
 
-export function WelcomeOnboarding({ onFinish }: Props) {
+export function WelcomeOnboarding({ onFinish, onClose }: Props) {
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = steps[stepIndex];
   const Icon = currentStep.icon;
   const isLastStep = stepIndex === steps.length - 1;
+  const finish = onFinish || onClose || (() => {});
 
   const progress = useMemo(() => ((stepIndex + 1) / steps.length) * 100, [stepIndex]);
 
   function goNext() {
     if (isLastStep) {
-      onFinish();
+      finish();
       return;
     }
 
@@ -60,7 +62,7 @@ export function WelcomeOnboarding({ onFinish }: Props) {
   }
 
   return (
-    <BaseModal onClose={onFinish}>
+    <BaseModal onClose={finish}>
       <div className="flex min-h-[460px] flex-col">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -76,7 +78,7 @@ export function WelcomeOnboarding({ onFinish }: Props) {
           </div>
           <button
             type="button"
-            onClick={onFinish}
+            onClick={finish}
             className="rounded-full p-2 text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-soft)]"
             aria-label="Fechar tutorial"
           >
@@ -143,7 +145,7 @@ export function WelcomeOnboarding({ onFinish }: Props) {
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={stepIndex === 0 ? onFinish : goBack}
+              onClick={stepIndex === 0 ? finish : goBack}
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[var(--app-surface-soft)] px-4 py-3 text-sm font-medium text-[var(--app-text)] ring-1 ring-[var(--app-border-soft)] transition-colors hover:bg-[var(--app-surface-hover)]"
             >
               {stepIndex === 0 ? 'Agora não' : <><ChevronLeft className="h-4 w-4" /> Voltar</>}
