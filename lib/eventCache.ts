@@ -27,6 +27,10 @@ function hasStorage() {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
 
+function isPublicCacheableEvent(event: SchoolEvent) {
+  return event.isPublic === true && !event.deletedAt;
+}
+
 function serializeEvent(event: SchoolEvent): CachedEvent {
   return {
     ...event,
@@ -56,15 +60,17 @@ function deserializeEvent(event: CachedEvent): SchoolEvent {
 export function saveCachedEvents(events: SchoolEvent[]) {
   if (!hasStorage()) return;
 
+  const safeEvents = events.filter(isPublicCacheableEvent);
+
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(events.map(serializeEvent)));
+    localStorage.setItem(CACHE_KEY, JSON.stringify(safeEvents.map(serializeEvent)));
     localStorage.setItem(CACHE_META_KEY, JSON.stringify({ savedAt: new Date().toISOString() }));
   } catch (error) {
     console.warn('Não foi possível salvar o cache local de eventos.', error);
   }
 }
 
-export function loadCachedEvents(options?: { includeDeleted?: boolean; includePrivate?: boolean }) {
+export function loadCachedEvents() {
   if (!hasStorage()) return [];
 
   try {
@@ -74,13 +80,23 @@ export function loadCachedEvents(options?: { includeDeleted?: boolean; includePr
     const parsed = JSON.parse(raw) as CachedEvent[];
     const events = parsed
       .map(deserializeEvent)
-      .filter(event => options?.includeDeleted || !event.deletedAt)
-      .filter(event => options?.includePrivate || event.isPublic);
+      .filter(isPublicCacheableEvent);
 
     return sortEvents(events);
   } catch (error) {
     console.warn('Não foi possível ler o cache local de eventos.', error);
     return [];
+  }
+}
+
+export function clearCachedEvents() {
+  if (!hasStorage()) return;
+
+  try {
+    localStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(CACHE_META_KEY);
+  } catch (error) {
+    console.warn('Não foi possível limpar o cache local de eventos.', error);
   }
 }
 
