@@ -53,10 +53,10 @@ export function EventFilterSheet({
                 key={filter.id}
                 type="button"
                 onClick={() => selectFilter(filter.id)}
-                className={`flex w-full items-start gap-3 rounded-3xl border p-4 text-left transition-colors ${
+                className={`flex w-full items-start gap-3 rounded-3xl p-4 text-left transition-colors ${
                   active
-                    ? 'border-[var(--app-primary)] bg-[var(--app-primary)] text-[var(--app-primary-text)]'
-                    : 'border-[var(--app-border-soft)] bg-[var(--app-surface-soft)] text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]'
+                    ? 'bg-[var(--app-primary)] text-[var(--app-primary-text)]'
+                    : 'bg-[var(--app-surface-soft)] text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]'
                 }`}
               >
                 <span className={active ? 'text-[var(--app-primary-text)]' : 'text-[var(--app-text-muted)]'}>{filter.icon}</span>
@@ -75,7 +75,7 @@ export function EventFilterSheet({
           <button
             type="button"
             onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            className="rounded-3xl border border-[var(--app-border-soft)] bg-[var(--app-surface-soft)] p-4 text-left transition-colors hover:bg-[var(--app-surface-hover)]"
+            className="rounded-3xl bg-[var(--app-surface-soft)] p-4 text-left transition-colors hover:bg-[var(--app-surface-hover)]"
           >
             <ArrowDownUp className="mb-3 h-5 w-5 text-[var(--app-text-muted)]" />
             <span className="block text-sm font-semibold text-[var(--app-text)]">Ordem</span>
@@ -87,7 +87,7 @@ export function EventFilterSheet({
           <button
             type="button"
             onClick={() => setLayoutView(layoutView === 'grid' ? 'list' : 'grid')}
-            className="rounded-3xl border border-[var(--app-border-soft)] bg-[var(--app-surface-soft)] p-4 text-left transition-colors hover:bg-[var(--app-surface-hover)]"
+            className="rounded-3xl bg-[var(--app-surface-soft)] p-4 text-left transition-colors hover:bg-[var(--app-surface-hover)]"
           >
             {layoutView === 'grid' ? <LayoutGrid className="mb-3 h-5 w-5 text-[var(--app-text-muted)]" /> : <List className="mb-3 h-5 w-5 text-[var(--app-text-muted)]" />}
             <span className="block text-sm font-semibold text-[var(--app-text)]">Visualização</span>

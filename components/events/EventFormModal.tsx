@@ -110,9 +110,9 @@ export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }:
   }
 
   return (
-    <BaseModal onClose={onClose} scrollable={false}>
-      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 sm:px-6 sm:pb-6 sm:pt-6">
+    <BaseModal onClose={onClose} scrollable={false} fullHeightMobile>
+      <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-1 flex-col">
+        <div className="muralize-sheet-scroll min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 sm:px-6 sm:pb-6 sm:pt-6" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
           <div className="mb-5 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <h3 className="text-lg font-semibold text-[var(--app-text)]">{isEditing ? 'Editar evento' : 'Novo evento'}</h3>
@@ -217,7 +217,7 @@ export function EventFormModal({ event, isSaving, errorMsg, onClose, onSubmit }:
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-[var(--app-border-soft)] bg-[var(--app-surface)] px-6 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:pb-5">
+        <div className="shrink-0 bg-[var(--app-surface)] px-6 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:pb-5">
           <button
             disabled={isSaving}
             className="w-full rounded-full bg-[var(--app-primary)] py-3 font-medium text-[var(--app-primary-text)] shadow-sm transition-transform active:scale-[0.99] disabled:opacity-60"

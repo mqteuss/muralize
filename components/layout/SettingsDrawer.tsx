@@ -27,9 +27,9 @@ function SettingsRow({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-3xl border border-[var(--app-border-soft)] bg-[var(--app-surface-soft)] p-4">
+    <div className="rounded-3xl bg-[var(--app-surface-soft)] p-4">
       <div className="flex items-start gap-3">
-        <div className="rounded-2xl bg-[var(--app-surface)] p-2 text-[var(--app-text-muted)] shadow-sm">
+        <div className="rounded-2xl bg-[var(--app-surface)] p-2 text-[var(--app-text-muted)]">
           {icon}
         </div>
         <div className="min-w-0 flex-1">
@@ -70,7 +70,7 @@ export function SettingsDrawer({ isOpen, isAdmin, loadedFromCache, onClose, onLo
     <SideDrawer title="Menu" description="Configurações rápidas do Muralize." onClose={onClose}>
       <div className="space-y-4">
         <div className="flex items-center gap-3 rounded-3xl bg-[var(--app-surface-soft)] p-4">
-          <img src="/icons/icon-192x192.png" alt="Muralize" className="h-12 w-12 rounded-2xl border border-[var(--app-border)] bg-[#fefefe]" />
+          <img src="/icons/icon-192x192.png" alt="Muralize" className="h-12 w-12 rounded-2xl bg-[#fefefe]" />
           <div className="min-w-0">
             <p className="font-semibold text-[var(--app-text)]">Muralize</p>
             <p className="text-xs text-[var(--app-text-muted)]">

@@ -228,3 +228,16 @@ html[data-theme="dark"] img[src^="/icons/"] {
 .text-\[\#fefefe\] {
   color: var(--app-primary-text) !important;
 }
+
+/* Dialog/sheet polish for production: prevent scroll chaining and keep transforms smooth. */
+.muralize-sheet-scroll {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+@supports (height: 100dvh) {
+  .h-dvh {
+    height: 100dvh;
+  }
+}
