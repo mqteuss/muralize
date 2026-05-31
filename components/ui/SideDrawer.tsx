@@ -1,7 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
-import { motion } from 'motion/react';
+import { animate, motion, useMotionValue } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
@@ -13,9 +13,17 @@ interface Props {
   onClose: () => void;
 }
 
+interface SwipeGestureState {
+  startX: number;
+  startY: number;
+  active: boolean;
+}
+
 export function SideDrawer({ title, description, side = 'right', children, onClose }: Props) {
+  const x = useMotionValue(0);
   const [dragLimit, setDragLimit] = useState(420);
   const closeOnceRef = useRef(false);
+  const swipeGestureRef = useRef<SwipeGestureState | null>(null);
   const fromX = side === 'right' ? '100%' : '-100%';
   const sideClass = side === 'right' ? 'right-0' : 'left-0';
   const roundedClass = side === 'right' ? 'rounded-l-[32px]' : 'rounded-r-[32px]';
@@ -38,11 +46,64 @@ export function SideDrawer({ title, description, side = 'right', children, onClo
     onClose();
   }
 
-  function handleDragEnd(_: MouseEvent | TouchEvent | PointerEvent, info: { offset: { x: number }; velocity: { x: number } }) {
-    const shouldCloseRight = side === 'right' && (info.offset.x > 64 || info.velocity.x > 420);
-    const shouldCloseLeft = side === 'left' && (info.offset.x < -64 || info.velocity.x < -420);
+  function resetPosition() {
+    animate(x, 0, { type: 'spring', stiffness: 520, damping: 42, mass: 0.7 });
+  }
 
-    if (shouldCloseRight || shouldCloseLeft) requestClose();
+  function handleDragEnd(_: MouseEvent | TouchEvent | PointerEvent, info: { offset: { x: number }; velocity: { x: number } }) {
+    const shouldCloseRight = side === 'right' && (info.offset.x > 56 || info.velocity.x > 360);
+    const shouldCloseLeft = side === 'left' && (info.offset.x < -56 || info.velocity.x < -360);
+
+    if (shouldCloseRight || shouldCloseLeft) {
+      requestClose();
+      return;
+    }
+
+    resetPosition();
+  }
+
+  function handleContentTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0];
+    swipeGestureRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      active: false,
+    };
+  }
+
+  function handleContentTouchMove(event: React.TouchEvent<HTMLDivElement>) {
+    const gesture = swipeGestureRef.current;
+    if (!gesture) return;
+
+    const touch = event.touches[0];
+    const deltaX = touch.clientX - gesture.startX;
+    const deltaY = touch.clientY - gesture.startY;
+    const horizontalIntent = Math.abs(deltaX) > Math.abs(deltaY) + 8;
+    const closingDirection = side === 'right' ? deltaX > 0 : deltaX < 0;
+
+    if (horizontalIntent && closingDirection) {
+      gesture.active = true;
+      const easedX = Math.max(-dragLimit, Math.min(dragLimit, deltaX * 0.9));
+      x.set(easedX);
+
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
+  function handleContentTouchEnd() {
+    const currentX = x.get();
+    swipeGestureRef.current = null;
+
+    const shouldCloseRight = side === 'right' && currentX > 64;
+    const shouldCloseLeft = side === 'left' && currentX < -64;
+
+    if (shouldCloseRight || shouldCloseLeft) {
+      requestClose();
+      return;
+    }
+
+    resetPosition();
   }
 
   return (
@@ -51,7 +112,7 @@ export function SideDrawer({ title, description, side = 'right', children, onClo
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.14, ease: 'easeOut' }}
+        transition={{ duration: 0.12, ease: 'easeOut' }}
         onClick={requestClose}
         className="fixed inset-0 z-40 bg-[var(--app-overlay)]"
         style={{ overscrollBehavior: 'none', touchAction: 'none' }}
@@ -63,16 +124,16 @@ export function SideDrawer({ title, description, side = 'right', children, onClo
         initial={{ x: fromX }}
         animate={{ x: 0 }}
         exit={{ x: fromX }}
-        transition={{ type: 'spring', stiffness: 520, damping: 44, mass: 0.72 }}
+        transition={{ type: 'spring', stiffness: 560, damping: 46, mass: 0.64 }}
         drag="x"
         dragConstraints={dragConstraints}
-        dragElastic={0}
+        dragElastic={0.04}
         dragMomentum={false}
         onDragEnd={handleDragEnd}
         className={`fixed top-0 ${sideClass} z-50 flex h-dvh w-[min(88vw,390px)] transform-gpu flex-col bg-[var(--app-surface)] shadow-[var(--app-shadow)] will-change-transform ${roundedClass}`}
-        style={{ willChange: 'transform', backfaceVisibility: 'hidden', contain: 'layout paint', overscrollBehavior: 'contain' }}
+        style={{ x, backfaceVisibility: 'hidden', contain: 'layout paint', overscrollBehavior: 'contain' }}
       >
-        <div className="flex cursor-grab items-start justify-between gap-4 px-5 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] active:cursor-grabbing">
+        <div className="flex cursor-grab items-start justify-between gap-4 px-5 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] active:cursor-grabbing" style={{ touchAction: 'none' }}>
           <div className="min-w-0">
             <h3 id="side-drawer-title" className="text-lg font-semibold text-[var(--app-text)]">
               {title}
@@ -91,9 +152,12 @@ export function SideDrawer({ title, description, side = 'right', children, onClo
         </div>
         <div
           className="muralize-sheet-scroll flex-1 overflow-y-auto px-5 py-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+          onTouchStart={handleContentTouchStart}
+          onTouchMove={handleContentTouchMove}
+          onTouchEnd={handleContentTouchEnd}
+          onTouchCancel={handleContentTouchEnd}
           onWheel={event => event.stopPropagation()}
-          onTouchMove={event => event.stopPropagation()}
-          style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+          style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
         >
           {children}
         </div>
