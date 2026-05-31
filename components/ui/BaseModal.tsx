@@ -1,6 +1,6 @@
 'use client';
 
-import { motion } from 'motion/react';
+import { animate, motion, useMotionValue } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
@@ -11,10 +11,18 @@ interface Props {
   fullHeightMobile?: boolean;
 }
 
+interface PullGestureState {
+  startY: number;
+  active: boolean;
+  canPull: boolean;
+}
+
 export function BaseModal({ children, onClose, scrollable = true, fullHeightMobile = false }: Props) {
+  const y = useMotionValue(0);
   const [dragLimit, setDragLimit] = useState(520);
   const [isDesktop, setIsDesktop] = useState(false);
   const closeOnceRef = useRef(false);
+  const pullGestureRef = useRef<PullGestureState | null>(null);
 
   useBodyScrollLock(true);
 
@@ -41,12 +49,81 @@ export function BaseModal({ children, onClose, scrollable = true, fullHeightMobi
     onClose();
   }
 
+  function resetPosition() {
+    animate(y, 0, { type: 'spring', stiffness: 520, damping: 42, mass: 0.7 });
+  }
+
   function handleDragEnd(
     _: MouseEvent | TouchEvent | PointerEvent,
     info: { offset: { y: number }; velocity: { y: number } },
   ) {
     if (isDesktop) return;
-    if (info.offset.y > 72 || info.velocity.y > 420) requestClose();
+
+    if (info.offset.y > 58 || info.velocity.y > 360) {
+      requestClose();
+      return;
+    }
+
+    resetPosition();
+  }
+
+  function getGestureScrollTarget(event: React.TouchEvent<HTMLDivElement>) {
+    const target = event.target instanceof HTMLElement ? event.target : event.currentTarget;
+    return (target.closest('.muralize-sheet-scroll') as HTMLElement | null) || event.currentTarget;
+  }
+
+  function handleContentTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    if (isDesktop) return;
+
+    const touch = event.touches[0];
+    const target = getGestureScrollTarget(event);
+
+    pullGestureRef.current = {
+      startY: touch.clientY,
+      active: false,
+      canPull: target.scrollTop <= 1,
+    };
+  }
+
+  function handleContentTouchMove(event: React.TouchEvent<HTMLDivElement>) {
+    if (isDesktop) return;
+
+    const gesture = pullGestureRef.current;
+    if (!gesture) return;
+
+    const touch = event.touches[0];
+    const target = getGestureScrollTarget(event);
+    const deltaY = touch.clientY - gesture.startY;
+
+    if (target.scrollTop > 1) {
+      gesture.canPull = false;
+      if (gesture.active) {
+        gesture.active = false;
+        resetPosition();
+      }
+      return;
+    }
+
+    if (gesture.canPull && deltaY > 0) {
+      gesture.active = true;
+      y.set(Math.min(deltaY * 0.82, dragLimit));
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
+  function handleContentTouchEnd() {
+    if (isDesktop) return;
+
+    const currentY = y.get();
+    pullGestureRef.current = null;
+
+    if (currentY > 68) {
+      requestClose();
+      return;
+    }
+
+    resetPosition();
   }
 
   const mobileMotion = {
@@ -72,7 +149,7 @@ export function BaseModal({ children, onClose, scrollable = true, fullHeightMobi
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.14, ease: 'easeOut' }}
+        transition={{ duration: 0.12, ease: 'easeOut' }}
         onClick={requestClose}
         className="fixed inset-0 z-40 bg-[var(--app-overlay)]"
         style={{ overscrollBehavior: 'none', touchAction: 'none' }}
@@ -84,26 +161,30 @@ export function BaseModal({ children, onClose, scrollable = true, fullHeightMobi
           initial={motionState.initial}
           animate={motionState.animate}
           exit={motionState.exit}
-          transition={{ type: 'spring', stiffness: 520, damping: 44, mass: 0.72 }}
+          transition={{ type: 'spring', stiffness: 560, damping: 46, mass: 0.64 }}
           drag={isDesktop ? false : 'y'}
           dragConstraints={{ top: 0, bottom: dragLimit }}
-          dragElastic={0}
+          dragElastic={0.04}
           dragMomentum={false}
           onDragEnd={handleDragEnd}
           className={`flex transform-gpu flex-col overflow-hidden rounded-t-[32px] bg-[var(--app-surface)] shadow-[var(--app-shadow)] will-change-transform sm:max-h-[min(92dvh,680px)] sm:rounded-[28px] ${fullHeightMobile ? 'h-[92dvh] max-h-[92dvh] sm:h-auto' : 'max-h-[92dvh]'}`}
-          style={{ willChange: 'transform', backfaceVisibility: 'hidden', contain: 'layout paint', overscrollBehavior: 'contain' }}
+          style={{ y, backfaceVisibility: 'hidden', contain: 'layout paint', overscrollBehavior: 'contain' }}
         >
           <button
             type="button"
             onClick={requestClose}
             className="mx-auto mb-1 mt-3 h-1.5 w-11 shrink-0 rounded-full bg-[var(--app-border)] transition-colors active:bg-[var(--app-text-muted)] sm:hidden"
             aria-label="Fechar arrastando ou tocando"
+            style={{ touchAction: 'none' }}
           />
           <div
             className={contentClass}
+            onTouchStart={handleContentTouchStart}
+            onTouchMove={handleContentTouchMove}
+            onTouchEnd={handleContentTouchEnd}
+            onTouchCancel={handleContentTouchEnd}
             onWheel={event => event.stopPropagation()}
-            onTouchMove={event => event.stopPropagation()}
-            style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+            style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
           >
             {children}
           </div>
