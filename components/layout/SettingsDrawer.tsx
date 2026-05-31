@@ -1,4 +1,4 @@
-import { Bell, CheckCircle2, LogIn, LogOut, Moon, Smartphone, Sun, UserRound, Wifi, WifiOff } from 'lucide-react';
+import { Bell, BookOpenCheck, CheckCircle2, LogIn, LogOut, Moon, Smartphone, Sun, UserRound, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { InstallPwaButton } from '@/components/pwa/InstallPwaButton';
@@ -12,6 +12,7 @@ interface Props {
   loadedFromCache: boolean;
   onClose: () => void;
   onLogoutClick: () => void;
+  onOpenOnboarding: () => void;
 }
 
 function SettingsRow({
@@ -41,7 +42,7 @@ function SettingsRow({
   );
 }
 
-export function SettingsDrawer({ isOpen, isAdmin, loadedFromCache, onClose, onLogoutClick }: Props) {
+export function SettingsDrawer({ isOpen, isAdmin, loadedFromCache, onClose, onLogoutClick, onOpenOnboarding }: Props) {
   const { user, loading: authLoading, signIn } = useAuth();
   const { resolvedTheme, toggleTheme } = useTheme();
   const [isOnline, setIsOnline] = useState(true);
@@ -119,6 +120,24 @@ export function SettingsDrawer({ isOpen, isAdmin, loadedFromCache, onClose, onLo
           >
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             {isDark ? 'Ativar tema claro' : 'Ativar tema escuro'}
+          </button>
+        </SettingsRow>
+
+        <SettingsRow
+          icon={<BookOpenCheck className="h-5 w-5" />}
+          title="Tutorial rápido"
+          description="Veja novamente as boas-vindas, os filtros, notificações e instalação do app."
+        >
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              onOpenOnboarding();
+            }}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--app-surface)] px-4 py-2.5 text-sm font-medium text-[var(--app-text)] ring-1 ring-[var(--app-border-soft)] transition-colors hover:bg-[var(--app-surface-hover)]"
+          >
+            <BookOpenCheck className="h-4 w-4" />
+            Ver tutorial novamente
           </button>
         </SettingsRow>
 

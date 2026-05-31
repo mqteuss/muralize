@@ -32,10 +32,13 @@ import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 import { SkeletonCard } from '@/components/ui/SkeletonCard';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { StatCard } from '@/components/ui/StatCard';
+import { WelcomeOnboarding } from '@/components/onboarding/WelcomeOnboarding';
+import { useOnboarding } from '@/hooks/useOnboarding';
 
 export default function Home() {
   const { signOut } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdmin();
+  const { isOnboardingOpen, openOnboarding, completeOnboarding } = useOnboarding();
   const [events, setEvents] = useState<SchoolEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadedFromCache, setLoadedFromCache] = useState(false);
@@ -284,6 +287,7 @@ export default function Home() {
         isAdmin={isAdmin}
         loadedFromCache={loadedFromCache}
         onLogoutClick={() => setIsLogoutModalOpen(true)}
+        onOpenOnboarding={openOnboarding}
       />
 
       <AnimatePresence>
@@ -400,6 +404,10 @@ export default function Home() {
             loading={historyLoading}
             onClose={() => setHistoryEvent(null)}
           />
+        )}
+
+        {isOnboardingOpen && (
+          <WelcomeOnboarding onFinish={completeOnboarding} />
         )}
 
         {eventToDelete && (

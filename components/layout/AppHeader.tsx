@@ -9,9 +9,10 @@ interface Props {
   isAdmin: boolean;
   loadedFromCache: boolean;
   onLogoutClick: () => void;
+  onOpenOnboarding: () => void;
 }
 
-export function AppHeader({ isAdmin, loadedFromCache, onLogoutClick }: Props) {
+export function AppHeader({ isAdmin, loadedFromCache, onLogoutClick, onOpenOnboarding }: Props) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   return (
@@ -66,6 +67,7 @@ export function AppHeader({ isAdmin, loadedFromCache, onLogoutClick }: Props) {
             loadedFromCache={loadedFromCache}
             onClose={() => setIsDrawerOpen(false)}
             onLogoutClick={onLogoutClick}
+            onOpenOnboarding={onOpenOnboarding}
           />
         )}
       </AnimatePresence>
