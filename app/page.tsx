@@ -20,6 +20,7 @@ import {
   updateEvent,
 } from '@/lib/events';
 import { getCachedEventsMeta, loadCachedEvents, saveCachedEvents } from '@/lib/eventCache';
+import { notifyEventSubscribers, EventNotificationType } from '@/lib/notificationClient';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { EventCard } from '@/components/events/EventCard';
 import { EventFilters, EventFilterType } from '@/components/events/EventFilters';
@@ -34,6 +35,39 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { StatCard } from '@/components/ui/StatCard';
 import { WelcomeOnboarding } from '@/components/onboarding/WelcomeOnboarding';
 import { useOnboarding } from '@/hooks/useOnboarding';
+
+
+function toNotificationEvent(id: string, payload: EventFormPayload) {
+  return {
+    id,
+    title: payload.title,
+    description: payload.description,
+    category: payload.category,
+    date: payload.date.toISOString(),
+    isPublic: payload.isPublic,
+    isPinned: payload.isPinned,
+    priority: payload.priority,
+  };
+}
+
+function priorityWeight(priority: SchoolEvent['priority']) {
+  if (priority === 'urgente') return 3;
+  if (priority === 'importante') return 2;
+  return 1;
+}
+
+function getUpdateNotificationType(previousEvent: SchoolEvent, payload: EventFormPayload): EventNotificationType | null {
+  if (!previousEvent.isPublic && payload.isPublic) return 'published';
+
+  if (payload.isPublic && payload.priority !== 'normal' && priorityWeight(payload.priority) > priorityWeight(previousEvent.priority)) {
+    return 'priority_up';
+  }
+
+  const dateChanged = Math.abs(previousEvent.date.getTime() - payload.date.getTime()) > 1000;
+  if (payload.isPublic && previousEvent.isPublic && dateChanged) return 'rescheduled';
+
+  return null;
+}
 
 export default function Home() {
   const { signOut } = useAuth();
@@ -174,7 +208,21 @@ export default function Home() {
 
     try {
       if (editingEvent) {
-        await updateEvent(editingEvent.id, payload, editingEvent);
+        const previousEvent = editingEvent;
+        await updateEvent(previousEvent.id, payload);
+
+        const notificationType = getUpdateNotificationType(previousEvent, payload);
+        if (notificationType) {
+          await notifyEventSubscribers({
+            type: notificationType,
+            event: toNotificationEvent(previousEvent.id, payload),
+            dedupeKey: `${notificationType}-${previousEvent.id}-${payload.date.getTime()}-${payload.priority}`,
+          }).catch(error => {
+            console.warn('Evento atualizado, mas a notificação não foi enviada.', error);
+            setFirebaseError('Evento atualizado, mas a notificação não foi enviada. Verifique os logs da Vercel.');
+          });
+        }
+
         showSuccess('Evento atualizado com sucesso!');
       } else {
         const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -182,6 +230,18 @@ export default function Home() {
           : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
         await createEvent(id, payload);
+
+        if (payload.isPublic) {
+          await notifyEventSubscribers({
+            type: 'created',
+            event: toNotificationEvent(id, payload),
+            dedupeKey: `created-${id}`,
+          }).catch(error => {
+            console.warn('Evento criado, mas a notificação não foi enviada.', error);
+            setFirebaseError('Evento criado, mas a notificação não foi enviada. Verifique os logs da Vercel.');
+          });
+        }
+
         showSuccess('Evento criado com sucesso!');
       }
 
