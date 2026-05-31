@@ -174,7 +174,7 @@ export default function Home() {
 
     try {
       if (editingEvent) {
-        await updateEvent(editingEvent.id, payload);
+        await updateEvent(editingEvent.id, payload, editingEvent);
         showSuccess('Evento atualizado com sucesso!');
       } else {
         const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
