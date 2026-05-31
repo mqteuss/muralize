@@ -44,7 +44,7 @@ export function EventFilterSheet({
 
   return (
     <BottomSheet title="Filtros e visualização" description="Organize o mural do jeito mais rápido para consultar." onClose={onClose}>
-      <div className="space-y-5">
+      <div className="space-y-5 pb-3">
         <div className="space-y-2">
           {filters.map(filter => {
             const active = filterType === filter.id;

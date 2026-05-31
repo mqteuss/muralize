@@ -7,6 +7,19 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
+type InstallSnapshot = {
+  deferredPrompt: BeforeInstallPromptEvent | null;
+  isInstalled: boolean;
+  isIos: boolean;
+  isSecureContext: boolean;
+  supportsServiceWorker: boolean;
+};
+
+let deferredPrompt: BeforeInstallPromptEvent | null = null;
+let listenersStarted = false;
+let installedState = false;
+const subscribers = new Set<() => void>();
+
 function isStandaloneMode() {
   if (typeof window === 'undefined') return false;
 
@@ -16,48 +29,114 @@ function isStandaloneMode() {
   return navigatorStandalone || displayModeStandalone;
 }
 
+function isIosDevice() {
+  if (typeof window === 'undefined') return false;
+  return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+}
+
+function getSnapshot(): InstallSnapshot {
+  if (typeof window === 'undefined') {
+    return {
+      deferredPrompt: null,
+      isInstalled: false,
+      isIos: false,
+      isSecureContext: false,
+      supportsServiceWorker: false,
+    };
+  }
+
+  installedState = installedState || isStandaloneMode();
+
+  return {
+    deferredPrompt,
+    isInstalled: installedState,
+    isIos: isIosDevice(),
+    isSecureContext: window.isSecureContext,
+    supportsServiceWorker: 'serviceWorker' in navigator,
+  };
+}
+
+function notifySubscribers() {
+  subscribers.forEach(listener => listener());
+}
+
+export function initPwaInstallListeners() {
+  if (typeof window === 'undefined' || listenersStarted) return;
+
+  listenersStarted = true;
+  installedState = isStandaloneMode();
+
+  const handleBeforeInstallPrompt = (event: Event) => {
+    event.preventDefault();
+    deferredPrompt = event as BeforeInstallPromptEvent;
+    notifySubscribers();
+  };
+
+  const handleInstalled = () => {
+    installedState = true;
+    deferredPrompt = null;
+    notifySubscribers();
+  };
+
+  const displayModeMedia = window.matchMedia('(display-mode: standalone)');
+  const handleDisplayModeChange = () => {
+    installedState = isStandaloneMode();
+    notifySubscribers();
+  };
+
+  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  window.addEventListener('appinstalled', handleInstalled);
+  displayModeMedia.addEventListener?.('change', handleDisplayModeChange);
+}
+
 export function usePwaInstall() {
-  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
+  const [snapshot, setSnapshot] = useState<InstallSnapshot>(() => getSnapshot());
 
   useEffect(() => {
-    setIsInstalled(isStandaloneMode());
+    initPwaInstallListeners();
 
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallEvent(event as BeforeInstallPromptEvent);
-    };
-
-    const handleInstalled = () => {
-      setIsInstalled(true);
-      setInstallEvent(null);
-    };
-
-    const displayModeMedia = window.matchMedia('(display-mode: standalone)');
-    const handleDisplayModeChange = () => setIsInstalled(isStandaloneMode());
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleInstalled);
-    displayModeMedia.addEventListener?.('change', handleDisplayModeChange);
+    const updateSnapshot = () => setSnapshot(getSnapshot());
+    subscribers.add(updateSnapshot);
+    updateSnapshot();
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleInstalled);
-      displayModeMedia.removeEventListener?.('change', handleDisplayModeChange);
+      subscribers.delete(updateSnapshot);
     };
   }, []);
 
-  const canInstall = useMemo(() => Boolean(installEvent) && !isInstalled, [installEvent, isInstalled]);
+  const canInstall = useMemo(() => Boolean(snapshot.deferredPrompt) && !snapshot.isInstalled, [snapshot.deferredPrompt, snapshot.isInstalled]);
 
   const promptInstall = useCallback(async () => {
-    if (!installEvent) return false;
+    if (!deferredPrompt || snapshot.isInstalled) return false;
 
-    await installEvent.prompt();
-    const choice = await installEvent.userChoice;
-    setInstallEvent(null);
+    const promptEvent = deferredPrompt;
+    deferredPrompt = null;
+    notifySubscribers();
 
-    return choice.outcome === 'accepted';
-  }, [installEvent]);
+    try {
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
 
-  return { canInstall, isInstalled, promptInstall };
+      if (choice.outcome === 'accepted') {
+        installedState = true;
+        notifySubscribers();
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.warn('PWA install prompt failed', error);
+      notifySubscribers();
+      return false;
+    }
+  }, [snapshot.isInstalled]);
+
+  return {
+    canInstall,
+    isInstalled: snapshot.isInstalled,
+    isIos: snapshot.isIos,
+    isSecureContext: snapshot.isSecureContext,
+    supportsServiceWorker: snapshot.supportsServiceWorker,
+    promptInstall,
+  };
 }

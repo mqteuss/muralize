@@ -1,5 +1,8 @@
+'use client';
+
 import { X } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
 
 interface Props {
   title: string;
@@ -10,9 +13,24 @@ interface Props {
 }
 
 export function SideDrawer({ title, description, side = 'right', children, onClose }: Props) {
+  const [dragLimit, setDragLimit] = useState(420);
   const fromX = side === 'right' ? '100%' : '-100%';
   const sideClass = side === 'right' ? 'right-0' : 'left-0';
   const roundedClass = side === 'right' ? 'rounded-l-[32px]' : 'rounded-r-[32px]';
+  const dragConstraints = side === 'right'
+    ? { left: 0, right: dragLimit }
+    : { left: -dragLimit, right: 0 };
+
+  useEffect(() => {
+    setDragLimit(Math.max(320, Math.min(window.innerWidth, 520)));
+  }, []);
+
+  function handleDragEnd(_: MouseEvent | TouchEvent | PointerEvent, info: { offset: { x: number }; velocity: { x: number } }) {
+    const shouldCloseRight = side === 'right' && (info.offset.x > 82 || info.velocity.x > 560);
+    const shouldCloseLeft = side === 'left' && (info.offset.x < -82 || info.velocity.x < -560);
+
+    if (shouldCloseRight || shouldCloseLeft) onClose();
+  }
 
   return (
     <>
@@ -31,9 +49,15 @@ export function SideDrawer({ title, description, side = 'right', children, onClo
         animate={{ x: 0 }}
         exit={{ x: fromX }}
         transition={{ type: 'spring', stiffness: 330, damping: 34 }}
-        className={`fixed top-0 ${sideClass} z-50 flex h-dvh w-[min(88vw,390px)] flex-col border border-[var(--app-border-soft)] bg-[var(--app-surface)] shadow-[var(--app-shadow)] ${roundedClass}`}
+        drag="x"
+        dragDirectionLock
+        dragConstraints={dragConstraints}
+        dragElastic={0.16}
+        dragMomentum={false}
+        onDragEnd={handleDragEnd}
+        className={`fixed top-0 ${sideClass} z-50 flex h-dvh w-[min(88vw,390px)] touch-pan-y flex-col border border-[var(--app-border-soft)] bg-[var(--app-surface)] shadow-[var(--app-shadow)] ${roundedClass}`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-[var(--app-border-soft)] px-5 pb-4 pt-[calc(1rem+env(safe-area-inset-top))]">
+        <div className="flex cursor-grab items-start justify-between gap-4 border-b border-[var(--app-border-soft)] px-5 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] active:cursor-grabbing">
           <div className="min-w-0">
             <h3 id="side-drawer-title" className="text-lg font-semibold text-[var(--app-text)]">
               {title}
@@ -43,6 +67,7 @@ export function SideDrawer({ title, description, side = 'right', children, onClo
           <button
             type="button"
             onClick={onClose}
+            onPointerDown={event => event.stopPropagation()}
             className="rounded-full p-2 text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-soft)]"
             aria-label="Fechar menu"
           >

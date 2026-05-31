@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RefreshCw, WifiOff } from 'lucide-react';
+import { usePwaInstall } from '@/hooks/usePwaInstall';
 
 export function PwaRegistrar() {
+  usePwaInstall();
+
   const [isOnline, setIsOnline] = useState(true);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
