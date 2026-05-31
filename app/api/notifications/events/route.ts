@@ -1,256 +1,301 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
-import { getAdminAuth, getAdminDb, getAdminMessaging } from '@/lib/firebaseAdmin';
+import { Timestamp } from 'firebase-admin/firestore';
+import { adminAuth, adminDb, adminMessaging } from '@/lib/firebaseAdmin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-type EventNotificationType = 'created' | 'published' | 'priority_up' | 'rescheduled';
-type EventPriority = 'normal' | 'importante' | 'urgente';
+type NotificationAction = 'created' | 'updated';
+type Priority = 'normal' | 'importante' | 'urgente';
 
-interface EventPayload {
-  id: string;
-  title: string;
+interface EventSnapshot {
+  id?: string;
+  title?: string;
   description?: string;
   category?: string;
-  date: string;
-  isPublic: boolean;
-  isPinned: boolean;
-  priority: EventPriority;
+  date?: unknown;
+  isPublic?: boolean;
+  isPinned?: boolean;
+  priority?: Priority;
+  deletedAt?: unknown;
 }
 
 interface RequestBody {
-  type: EventNotificationType;
-  event: EventPayload;
-  dedupeKey: string;
+  eventId?: string;
+  action?: NotificationAction;
+  previousEvent?: EventSnapshot | null;
 }
 
-const VALID_TYPES = new Set<EventNotificationType>(['created', 'published', 'priority_up', 'rescheduled']);
-const VALID_PRIORITIES = new Set<EventPriority>(['normal', 'importante', 'urgente']);
-const INVALID_TOKEN_CODES = new Set([
-  'messaging/registration-token-not-registered',
-  'messaging/invalid-registration-token',
-  'messaging/invalid-argument',
-]);
-
-function json(status: number, payload: Record<string, unknown>) {
-  return NextResponse.json(payload, { status });
+function json(data: unknown, status = 200) {
+  return NextResponse.json(data, { status });
 }
 
-function sanitizeDocumentId(value: string) {
-  return value.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 180);
+function getBearerToken(request: NextRequest) {
+  const header = request.headers.get('authorization') || '';
+  if (!header.startsWith('Bearer ')) return null;
+  return header.slice('Bearer '.length).trim();
 }
 
-function normalizeEventPayload(value: unknown): EventPayload | null {
-  const event = value as Partial<EventPayload> | null;
-
-  if (!event || typeof event !== 'object') return null;
-  if (typeof event.id !== 'string' || event.id.length < 1 || event.id.length > 128) return null;
-  if (typeof event.title !== 'string' || event.title.trim().length < 1 || event.title.length > 120) return null;
-  if (typeof event.date !== 'string' || Number.isNaN(new Date(event.date).getTime())) return null;
-  if (event.isPublic !== true) return null;
-  if (typeof event.isPinned !== 'boolean') return null;
-  if (!VALID_PRIORITIES.has(event.priority as EventPriority)) return null;
-
-  return {
-    id: event.id,
-    title: event.title.trim(),
-    description: typeof event.description === 'string' ? event.description.slice(0, 500) : '',
-    category: typeof event.category === 'string' ? event.category.slice(0, 50) : '',
-    date: event.date,
-    isPublic: true,
-    isPinned: event.isPinned,
-    priority: event.priority as EventPriority,
-  };
+function normalizeDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Timestamp) return value.toDate();
+  if (typeof value === 'object' && value !== null && 'toDate' in value && typeof (value as any).toDate === 'function') {
+    return (value as any).toDate();
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
 }
 
-function notificationCopy(type: EventNotificationType, event: EventPayload) {
-  const formattedDate = new Intl.DateTimeFormat('pt-BR', {
+function formatDate(value: unknown) {
+  const date = normalizeDate(value);
+  if (!date) return '';
+
+  return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(event.date));
+    timeZone: 'America/Sao_Paulo',
+  }).format(date);
+}
 
-  if (type === 'published') {
+function toMillis(value: unknown) {
+  return normalizeDate(value)?.getTime() || 0;
+}
+
+function normalizePriority(value: unknown): Priority {
+  if (value === 'urgente' || value === 'importante' || value === 'normal') return value;
+  return 'normal';
+}
+
+function buildNotification(action: NotificationAction, event: EventSnapshot, previousEvent?: EventSnapshot | null) {
+  if (event.deletedAt) return null;
+  if (event.isPublic !== true) return null;
+
+  const title = event.title || 'Novo evento';
+  const description = event.description || event.category || 'Confira os detalhes no Muralize.';
+  const priority = normalizePriority(event.priority);
+  const previousPriority = normalizePriority(previousEvent?.priority);
+  const wasPublic = previousEvent?.isPublic === true;
+  const dateChanged = Boolean(previousEvent) && toMillis(previousEvent?.date) !== toMillis(event.date);
+  const becamePublic = action === 'updated' && previousEvent?.isPublic === false && event.isPublic === true;
+  const priorityRaised = action === 'updated'
+    && priority !== previousPriority
+    && (priority === 'importante' || priority === 'urgente')
+    && previousPriority !== 'urgente';
+
+  if (action === 'created') {
     return {
+      reason: 'created',
+      logId: `created-${event.id}`,
+      title: 'Novo evento no Muralize',
+      body: `${title}${event.date ? ` • ${formatDate(event.date)}` : ''}`,
+    };
+  }
+
+  if (becamePublic) {
+    return {
+      reason: 'published',
+      logId: `published-${event.id}-${toMillis(event.date)}`,
       title: 'Evento publicado no Muralize',
-      body: `${event.title} agora está visível no mural.`,
+      body: `${title}${event.date ? ` • ${formatDate(event.date)}` : ''}`,
     };
   }
 
-  if (type === 'priority_up') {
+  if (priorityRaised) {
     return {
-      title: event.priority === 'urgente' ? 'Aviso urgente no Muralize' : 'Aviso importante no Muralize',
-      body: `${event.title} foi marcado como ${event.priority}.`,
+      reason: 'priority',
+      logId: `priority-${event.id}-${priority}-${toMillis(event.date)}`,
+      title: priority === 'urgente' ? 'Evento urgente no Muralize' : 'Evento importante no Muralize',
+      body: `${title}: ${description}`,
     };
   }
 
-  if (type === 'rescheduled') {
+  if (wasPublic && dateChanged) {
     return {
+      reason: 'rescheduled',
+      logId: `rescheduled-${event.id}-${toMillis(event.date)}`,
       title: 'Evento atualizado no Muralize',
-      body: `${event.title} agora está agendado para ${formattedDate}.`,
+      body: `${title} agora está para ${formatDate(event.date)}.`,
     };
   }
 
-  return {
-    title: 'Novo evento no Muralize',
-    body: `${event.title} foi adicionado ao mural para ${formattedDate}.`,
-  };
+  return null;
 }
 
-function chunk<T>(items: T[], size: number) {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
+async function assertAdmin(uid: string) {
+  const adminDoc = await adminDb.collection('admins').doc(uid).get();
+  return adminDoc.exists;
+}
+
+async function getSubscriptions() {
+  const snapshot = await adminDb
+    .collection('notificationSubscriptions')
+    .where('permission', '==', 'granted')
+    .limit(500)
+    .get();
+
+  const subscriptions: { id: string; token: string }[] = [];
+
+  snapshot.forEach(document => {
+    const data = document.data();
+    if (typeof data.token === 'string' && data.token.length > 20) {
+      subscriptions.push({ id: document.id, token: data.token });
+    }
+  });
+
+  return subscriptions;
+}
+
+async function markNotificationLog(logId: string, data: Record<string, unknown>) {
+  const ref = adminDb.collection('notificationLogs').doc(logId);
+  const existing = await ref.get();
+
+  if (existing.exists) {
+    return false;
   }
-  return chunks;
+
+  await ref.set({
+    ...data,
+    createdAt: Timestamp.now(),
+  });
+
+  return true;
 }
 
-async function verifyAdmin(request: NextRequest) {
-  const authHeader = request.headers.get('authorization') || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : '';
-
-  if (!token) return null;
-
-  const decoded = await getAdminAuth().verifyIdToken(token);
-  const adminDocument = await getAdminDb().collection('admins').doc(decoded.uid).get();
-
-  if (!adminDocument.exists) return null;
-  return decoded;
+export async function GET() {
+  return json({ ok: false, message: 'Use POST para enviar notificações de eventos.' }, 405);
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const decoded = await verifyAdmin(request);
+    const token = getBearerToken(request);
 
-    if (!decoded) {
-      return json(403, { error: 'Apenas administradores podem disparar notificações.' });
+    if (!token) {
+      return json({ ok: false, error: 'missing_auth_token' }, 401);
     }
 
-    const body = await request.json() as Partial<RequestBody>;
+    const decodedToken = await adminAuth.verifyIdToken(token);
+    const admin = await assertAdmin(decodedToken.uid);
 
-    if (!VALID_TYPES.has(body.type as EventNotificationType)) {
-      return json(400, { error: 'Tipo de notificação inválido.' });
+    if (!admin) {
+      return json({ ok: false, error: 'not_admin' }, 403);
     }
 
-    if (typeof body.dedupeKey !== 'string' || body.dedupeKey.length < 3) {
-      return json(400, { error: 'Chave de deduplicação inválida.' });
+    const body = (await request.json()) as RequestBody;
+    const eventId = body.eventId;
+    const action = body.action;
+
+    if (!eventId || (action !== 'created' && action !== 'updated')) {
+      return json({ ok: false, error: 'invalid_payload' }, 400);
     }
 
-    const event = normalizeEventPayload(body.event);
-    if (!event) {
-      return json(400, { error: 'Evento inválido ou privado.' });
+    const eventDocument = await adminDb.collection('events').doc(eventId).get();
+
+    if (!eventDocument.exists) {
+      return json({ ok: false, error: 'event_not_found' }, 404);
     }
 
-    const db = getAdminDb();
-    const dedupeDocument = db.collection('notificationLogs').doc(sanitizeDocumentId(body.dedupeKey));
+    const event = { id: eventDocument.id, ...eventDocument.data() } as EventSnapshot;
+    const notification = buildNotification(action, event, body.previousEvent);
 
-    try {
-      await dedupeDocument.create({
-        type: body.type,
-        eventId: event.id,
-        eventTitle: event.title,
-        actorId: decoded.uid,
-        createdAt: FieldValue.serverTimestamp(),
-        status: 'started',
+    if (!notification) {
+      return json({ ok: true, skipped: true, reason: 'no_notification_needed' });
+    }
+
+    const shouldSend = await markNotificationLog(notification.logId, {
+      eventId,
+      action,
+      reason: notification.reason,
+      actorId: decodedToken.uid,
+      status: 'started',
+    });
+
+    if (!shouldSend) {
+      return json({ ok: true, skipped: true, reason: 'duplicate' });
+    }
+
+    const subscriptions = await getSubscriptions();
+
+    if (subscriptions.length === 0) {
+      await adminDb.collection('notificationLogs').doc(notification.logId).update({
+        status: 'no_tokens',
+        finishedAt: Timestamp.now(),
       });
-    } catch (error: any) {
-      const code = String(error?.code || error?.message || '').toLowerCase();
-      if (code.includes('already-exists') || code === '6') {
-        return json(200, { ok: true, deduped: true, sent: 0, failed: 0, invalidTokensRemoved: 0 });
-      }
-      throw error;
+
+      return json({ ok: true, sent: 0, reason: 'no_tokens' });
     }
 
-    const subscriptions = await db
-      .collection('notificationSubscriptions')
-      .where('permission', '==', 'granted')
-      .get();
+    const appUrl = process.env.MURALIZE_APP_URL || request.nextUrl.origin;
+    const tokens = subscriptions.map(subscription => subscription.token);
 
-    const subscriptionDocs = subscriptions.docs
-      .map(document => ({ id: document.id, token: document.get('token') }))
-      .filter(subscription => typeof subscription.token === 'string' && subscription.token.length > 20) as { id: string; token: string }[];
-
-    if (subscriptionDocs.length === 0) {
-      await dedupeDocument.update({ status: 'no_tokens', finishedAt: FieldValue.serverTimestamp() });
-      return json(200, { ok: true, sent: 0, failed: 0, invalidTokensRemoved: 0 });
-    }
-
-    const appUrl = process.env.MURALIZE_APP_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
-    const eventUrl = `${appUrl.replace(/\/$/, '')}/?event=${encodeURIComponent(event.id)}`;
-    const copy = notificationCopy(body.type as EventNotificationType, event);
-    const messaging = getAdminMessaging();
-
-    let sent = 0;
-    let failed = 0;
-    const invalidSubscriptionIds: string[] = [];
-
-    for (const group of chunk(subscriptionDocs, 500)) {
-      const response = await messaging.sendEachForMulticast({
-        tokens: group.map(subscription => subscription.token),
+    const result = await adminMessaging.sendEachForMulticast({
+      tokens,
+      notification: {
+        title: notification.title,
+        body: notification.body,
+      },
+      webpush: {
+        fcmOptions: {
+          link: appUrl,
+        },
         notification: {
-          title: copy.title,
-          body: copy.body,
+          icon: `${appUrl}/icons/icon-192x192.png`,
+          badge: `${appUrl}/icons/icon-96x96.png`,
+          tag: notification.logId,
+          renotify: false,
+          requireInteraction: event.priority === 'urgente',
         },
-        data: {
-          url: eventUrl,
-          eventId: event.id,
-          type: body.type as string,
-          title: copy.title,
-          body: copy.body,
-          priority: event.priority,
-          tag: `muralize-${body.type}-${event.id}`,
-        },
-        webpush: {
-          fcmOptions: {
-            link: eventUrl,
-          },
-          notification: {
-            icon: '/icons/icon-192x192.png',
-            badge: '/icons/badge-72x72.png',
-            tag: `muralize-${body.type}-${event.id}`,
-            renotify: true,
-          },
-        },
-      });
+      },
+      data: {
+        eventId,
+        action,
+        reason: notification.reason,
+      },
+    });
 
-      sent += response.successCount;
-      failed += response.failureCount;
+    const invalidCodes = new Set([
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-registration-token',
+      'messaging/invalid-argument',
+    ]);
 
-      response.responses.forEach((item, index) => {
-        const code = item.error?.code;
-        if (code && INVALID_TOKEN_CODES.has(code)) {
-          invalidSubscriptionIds.push(group[index].id);
-        }
-      });
-    }
+    const deletions: Promise<unknown>[] = [];
 
-    if (invalidSubscriptionIds.length > 0) {
-      await Promise.allSettled(
-        invalidSubscriptionIds.map(id => db.collection('notificationSubscriptions').doc(id).delete()),
-      );
-    }
+    result.responses.forEach((response, index) => {
+      if (!response.success && response.error && invalidCodes.has(response.error.code)) {
+        deletions.push(adminDb.collection('notificationSubscriptions').doc(subscriptions[index].id).delete());
+      }
+    });
 
-    await dedupeDocument.update({
+    await Promise.allSettled(deletions);
+
+    await adminDb.collection('notificationLogs').doc(notification.logId).update({
       status: 'sent',
-      sent,
-      failed,
-      invalidTokensRemoved: invalidSubscriptionIds.length,
-      finishedAt: FieldValue.serverTimestamp(),
+      successCount: result.successCount,
+      failureCount: result.failureCount,
+      tokenCount: tokens.length,
+      invalidTokenCount: deletions.length,
+      finishedAt: Timestamp.now(),
     });
 
-    return json(200, {
+    return json({
       ok: true,
-      sent,
-      failed,
-      invalidTokensRemoved: invalidSubscriptionIds.length,
+      sent: result.successCount,
+      failed: result.failureCount,
+      tokens: tokens.length,
+      removedInvalidTokens: deletions.length,
     });
-  } catch (error: any) {
-    console.error('Falha ao enviar notificações de evento.', error);
-    return json(500, {
-      error: 'Falha ao enviar notificações.',
-      details: error?.message || String(error),
-    });
+  } catch (error) {
+    console.error('Erro ao enviar notificação de evento:', error);
+
+    return json({
+      ok: false,
+      error: 'internal_error',
+      message: error instanceof Error ? error.message : String(error),
+    }, 500);
   }
 }

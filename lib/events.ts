@@ -4,6 +4,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -14,7 +15,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { notifyEventSubscribers, type EventNotificationPayload, type EventNotificationType } from './notificationClient';
+import { notifyEventChange, type NotificationEventSnapshot } from './notificationClient';
 
 export type EventPriority = 'normal' | 'importante' | 'urgente';
 export type EventHistoryAction = 'created' | 'updated' | 'duplicated' | 'deleted' | 'restored' | 'permanently_deleted';
@@ -175,50 +176,26 @@ function eventSnapshot(event: Partial<SchoolEvent>) {
   };
 }
 
-function priorityWeight(priority: EventPriority) {
-  if (priority === 'urgente') return 3;
-  if (priority === 'importante') return 2;
-  return 1;
-}
+function notificationSnapshot(event?: Partial<SchoolEvent> | null): NotificationEventSnapshot | null {
+  if (!event) return null;
 
-function notificationPayload(id: string, event: CreateSchoolEventInput): EventNotificationPayload {
   return {
-    id,
-    title: event.title.trim(),
-    description: event.description?.trim() || '',
-    category: event.category?.trim() || '',
-    date: event.date.toISOString(),
-    isPublic: event.isPublic !== false,
-    isPinned: event.isPinned === true,
-    priority: event.priority || 'normal',
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    category: event.category,
+    date: event.date instanceof Date ? event.date.toISOString() : undefined,
+    isPublic: event.isPublic,
+    isPinned: event.isPinned,
+    priority: event.priority,
+    deletedAt: event.deletedAt instanceof Date ? event.deletedAt.toISOString() : null,
   };
 }
 
-function resolveUpdateNotificationType(previousEvent: SchoolEvent | undefined, nextEvent: EventNotificationPayload): EventNotificationType | null {
-  if (!previousEvent || !nextEvent.isPublic || previousEvent.deletedAt) return null;
-
-  if (!previousEvent.isPublic && nextEvent.isPublic) return 'published';
-
-  const previousPriority = previousEvent.priority || 'normal';
-  if (
-    nextEvent.priority !== 'normal' &&
-    priorityWeight(nextEvent.priority) > priorityWeight(previousPriority)
-  ) {
-    return 'priority_up';
-  }
-
-  if (previousEvent.isPublic && previousEvent.date.getTime() !== new Date(nextEvent.date).getTime()) {
-    return 'rescheduled';
-  }
-
-  return null;
-}
-
-function notifyEventChange(type: EventNotificationType, event: EventNotificationPayload, dedupeKey: string) {
-  if (!event.isPublic) return;
-
-  notifyEventSubscribers({ type, event, dedupeKey })
-    .catch(error => console.warn('Evento salvo, mas a notificação push não foi enviada.', error));
+function notifyEventSafely(input: Parameters<typeof notifyEventChange>[0]) {
+  notifyEventChange(input).catch(error => {
+    console.warn('Falha ao solicitar envio de notificação.', error);
+  });
 }
 
 async function writeHistory(eventId: string, action: EventHistoryAction, title: string, snapshot?: Partial<SchoolEvent>) {
@@ -252,16 +229,15 @@ export async function createEvent(id: string, event: CreateSchoolEventInput) {
     priority: sanitized.priority,
   }).catch(error => console.warn('Falha ao registrar histórico de criação.', error));
 
-  if (sanitized.isPublic) {
-    notifyEventChange('created', notificationPayload(id, event), `created_${id}`);
-  }
+  notifyEventSafely({ eventId: id, action: 'created' });
 }
 
-export async function updateEvent(id: string, event: UpdateSchoolEventInput, previousEvent?: SchoolEvent) {
+export async function updateEvent(id: string, event: UpdateSchoolEventInput) {
   const user = requireCurrentUser();
   const eventDocument = doc(db, EVENTS_PATH, id);
+  const beforeSnapshot = await getDoc(eventDocument);
+  const previousEvent = beforeSnapshot.exists() ? mapEvent(beforeSnapshot.id, beforeSnapshot.data()) : null;
   const sanitized = sanitizeEventInput(event);
-  const nextNotificationPayload = notificationPayload(id, event);
 
   await updateDoc(eventDocument, {
     ...sanitized,
@@ -276,14 +252,11 @@ export async function updateEvent(id: string, event: UpdateSchoolEventInput, pre
     priority: sanitized.priority,
   }).catch(error => console.warn('Falha ao registrar histórico de atualização.', error));
 
-  const notificationType = resolveUpdateNotificationType(previousEvent, nextNotificationPayload);
-  if (notificationType) {
-    const dedupeKey = notificationType === 'priority_up'
-      ? `${notificationType}_${id}_${nextNotificationPayload.priority}`
-      : `${notificationType}_${id}_${new Date(nextNotificationPayload.date).getTime()}`;
-
-    notifyEventChange(notificationType, nextNotificationPayload, dedupeKey);
-  }
+  notifyEventSafely({
+    eventId: id,
+    action: 'updated',
+    previousEvent: notificationSnapshot(previousEvent),
+  });
 }
 
 export async function duplicateEvent(event: SchoolEvent) {

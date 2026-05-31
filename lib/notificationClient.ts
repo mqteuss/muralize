@@ -1,48 +1,54 @@
-'use client';
-
 import { auth } from './firebase';
 import type { EventPriority } from './events';
 
-export type EventNotificationType = 'created' | 'published' | 'priority_up' | 'rescheduled';
-
-export interface EventNotificationPayload {
-  id: string;
-  title: string;
+export interface NotificationEventSnapshot {
+  id?: string;
+  title?: string;
   description?: string;
   category?: string;
-  date: string;
-  isPublic: boolean;
-  isPinned: boolean;
-  priority: EventPriority;
+  date?: string;
+  isPublic?: boolean;
+  isPinned?: boolean;
+  priority?: EventPriority;
+  deletedAt?: string | null;
 }
 
-interface NotifyEventSubscribersInput {
-  type: EventNotificationType;
-  event: EventNotificationPayload;
-  dedupeKey: string;
+export interface NotifyEventChangeInput {
+  eventId: string;
+  action: 'created' | 'updated';
+  previousEvent?: NotificationEventSnapshot | null;
 }
 
-export async function notifyEventSubscribers(input: NotifyEventSubscribersInput) {
+export async function notifyEventChange(input: NotifyEventChangeInput) {
   const user = auth.currentUser;
 
-  if (!user) return { skipped: true, reason: 'not-authenticated' };
-  if (!input.event.isPublic) return { skipped: true, reason: 'not-public' };
+  if (!user) {
+    console.warn('Notificação não enviada: usuário não autenticado.');
+    return null;
+  }
 
   const idToken = await user.getIdToken();
 
   const response = await fetch('/api/notifications/events', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${idToken}`,
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
     },
     body: JSON.stringify(input),
   });
 
-  if (!response.ok) {
-    const message = await response.text().catch(() => 'Falha ao enviar notificação.');
-    throw new Error(message || 'Falha ao enviar notificação.');
+  let data: unknown = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = await response.text().catch(() => null);
   }
 
-  return response.json();
+  if (!response.ok) {
+    console.error('Falha na API de notificações.', response.status, data);
+    throw new Error(`Falha ao enviar notificação: HTTP ${response.status}`);
+  }
+
+  return data;
 }
