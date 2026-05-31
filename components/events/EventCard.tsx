@@ -1,18 +1,13 @@
 import { SchoolEvent } from '@/lib/events';
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Calendar, Copy, Eye, EyeOff, History, Pencil, Pin, RotateCcw, Share2, Star, Trash2 } from 'lucide-react';
+import { Calendar, Eye, EyeOff, MoreVertical, Pin, Star } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface Props {
   event: SchoolEvent;
   isAdmin: boolean;
-  onDeleteClick: (event: SchoolEvent) => void;
-  onEditClick: (event: SchoolEvent) => void;
-  onDuplicateClick: (event: SchoolEvent) => void;
-  onHistoryClick: (event: SchoolEvent) => void;
-  onRestoreClick: (event: SchoolEvent) => void;
-  onShareClick: (event: SchoolEvent) => void;
+  onActionsClick: (event: SchoolEvent) => void;
 }
 
 const priorityLabel: Record<SchoolEvent['priority'], string> = {
@@ -21,16 +16,7 @@ const priorityLabel: Record<SchoolEvent['priority'], string> = {
   urgente: 'Urgente',
 };
 
-export function EventCard({
-  event,
-  isAdmin,
-  onDeleteClick,
-  onEditClick,
-  onDuplicateClick,
-  onHistoryClick,
-  onRestoreClick,
-  onShareClick,
-}: Props) {
+export function EventCard({ event, isAdmin, onActionsClick }: Props) {
   const getRelativeTimeText = (date: Date) => {
     if (event.deletedAt) return 'Na lixeira';
     if (isPast(date)) return 'Finalizado';
@@ -46,12 +32,12 @@ export function EventCard({
       : 'text-[#49454F] bg-[#E6E0E9]';
 
   return (
-    <motion.div
+    <motion.article
       layout
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className={`group flex flex-col justify-between p-5 rounded-3xl border transition-colors relative ${
+      className={`group relative flex flex-col justify-between rounded-3xl border p-5 transition-colors ${
         event.deletedAt
           ? 'border-red-200 bg-red-50/50 hover:bg-red-50'
           : event.isPinned
@@ -59,123 +45,60 @@ export function EventCard({
             : 'border-[#CAC4D0] bg-[#fefefe] hover:bg-[#F4EFF4]'
       }`}
     >
-      <div className={isAdmin ? 'pr-24' : 'pr-10'}>
-        <div className="flex items-start justify-between mb-2 gap-4">
-          <div className="flex items-start gap-2 min-w-0">
-            {event.isPinned && <Pin className="w-4 h-4 text-[#6750A4] mt-0.5 shrink-0" />}
-            <h3 className="font-semibold text-base text-[#1D1B20] leading-snug break-words">{event.title}</h3>
+      <button
+        type="button"
+        onClick={() => onActionsClick(event)}
+        className="absolute right-4 top-4 rounded-full p-2 text-[#49454F] transition-colors hover:bg-[#E6E0E9]"
+        title="Ações do evento"
+        aria-label="Ações do evento"
+      >
+        <MoreVertical className="h-5 w-5" />
+      </button>
+
+      <div className="pr-12">
+        <div className="mb-2 flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-2">
+            {event.isPinned && <Pin className="mt-0.5 h-4 w-4 shrink-0 text-[#6750A4]" />}
+            <h3 className="break-words text-base font-semibold leading-snug text-[#1D1B20]">{event.title}</h3>
           </div>
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap shrink-0 ${isPast(event.date) || event.deletedAt ? 'bg-[#E6E0E9] text-[#49454F]' : 'bg-[#1D1B20] text-[#fefefe]'}`}>
+          <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${isPast(event.date) || event.deletedAt ? 'bg-[#E6E0E9] text-[#49454F]' : 'bg-[#1D1B20] text-[#fefefe]'}`}>
             {getRelativeTimeText(event.date)}
           </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           {event.category && (
-            <span className="inline-block text-[10px] uppercase font-bold text-[#49454F] bg-[#E6E0E9] px-2 py-0.5 rounded">
+            <span className="inline-block rounded bg-[#E6E0E9] px-2 py-0.5 text-[10px] font-bold uppercase text-[#49454F]">
               {event.category}
             </span>
           )}
 
           {event.priority !== 'normal' && (
-            <span className={`inline-flex items-center gap-1 text-[10px] uppercase font-bold px-2 py-0.5 rounded ${priorityClass}`}>
-              <Star className="w-3 h-3" />
+            <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold uppercase ${priorityClass}`}>
+              <Star className="h-3 w-3" />
               {priorityLabel[event.priority]}
             </span>
           )}
 
           {isAdmin && (
-            <span className={`inline-flex items-center gap-1 text-[10px] uppercase font-bold px-2 py-0.5 rounded ${event.isPublic ? 'text-[#49454F] bg-[#E6E0E9]' : 'text-amber-800 bg-amber-100'}`}>
-              {event.isPublic ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+            <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold uppercase ${event.isPublic ? 'bg-[#E6E0E9] text-[#49454F]' : 'bg-amber-100 text-amber-800'}`}>
+              {event.isPublic ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
               {event.isPublic ? 'Público' : 'Rascunho'}
             </span>
           )}
         </div>
 
         {event.description && (
-          <p className="text-sm text-[#49454F] mb-4 break-words line-clamp-3">
+          <p className="mb-4 line-clamp-3 break-words text-sm text-[#49454F]">
             {event.description}
           </p>
         )}
 
         <div className="flex items-center gap-2 text-sm text-[#49454F]">
-          <Calendar className="w-4 h-4 opacity-70" />
+          <Calendar className="h-4 w-4 opacity-70" />
           <span>{format(event.date, "dd 'de' MMMM, HH:mm", { locale: ptBR })}</span>
         </div>
       </div>
-
-      <div className="absolute top-5 right-5 flex items-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-        {!event.deletedAt && (
-          <button
-            type="button"
-            onClick={() => onShareClick(event)}
-            className="text-[#49454F] hover:bg-[#E6E0E9] p-2 rounded-full transition-colors focus:opacity-100"
-            title="Compartilhar evento"
-            aria-label="Compartilhar evento"
-          >
-            <Share2 className="w-4 h-4" />
-          </button>
-        )}
-
-        {isAdmin && !event.deletedAt && (
-          <>
-            <button
-              type="button"
-              onClick={() => onEditClick(event)}
-              className="text-[#49454F] hover:bg-[#E6E0E9] p-2 rounded-full transition-colors focus:opacity-100"
-              title="Editar evento"
-              aria-label="Editar evento"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onDuplicateClick(event)}
-              className="text-[#49454F] hover:bg-[#E6E0E9] p-2 rounded-full transition-colors focus:opacity-100"
-              title="Duplicar evento"
-              aria-label="Duplicar evento"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
-          </>
-        )}
-
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => onHistoryClick(event)}
-            className="text-[#49454F] hover:bg-[#E6E0E9] p-2 rounded-full transition-colors focus:opacity-100"
-            title="Histórico do evento"
-            aria-label="Histórico do evento"
-          >
-            <History className="w-4 h-4" />
-          </button>
-        )}
-
-        {isAdmin && event.deletedAt && (
-          <button
-            type="button"
-            onClick={() => onRestoreClick(event)}
-            className="text-green-700 hover:bg-green-100 p-2 rounded-full transition-colors focus:opacity-100"
-            title="Restaurar evento"
-            aria-label="Restaurar evento"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-        )}
-
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => onDeleteClick(event)}
-            className="text-red-600 hover:bg-red-100 p-2 rounded-full transition-colors focus:opacity-100"
-            title={event.deletedAt ? 'Excluir permanentemente' : 'Mover para lixeira'}
-            aria-label={event.deletedAt ? 'Excluir permanentemente' : 'Mover para lixeira'}
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-    </motion.div>
+    </motion.article>
   );
 }

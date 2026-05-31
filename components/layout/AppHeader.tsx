@@ -1,68 +1,74 @@
-import { LogIn, LogOut, Moon, Sun } from 'lucide-react';
-import { useAuth } from '@/components/AuthProvider';
-import { InstallPwaButton } from '@/components/pwa/InstallPwaButton';
-import { PushNotificationButton } from '@/components/pwa/PushNotificationButton';
+import { Menu, ShieldCheck, WifiOff } from 'lucide-react';
+import { useState } from 'react';
+import { AnimatePresence } from 'motion/react';
+import { SettingsDrawer } from '@/components/layout/SettingsDrawer';
 import { SchoolEvent } from '@/lib/events';
-import { useTheme } from '@/hooks/useTheme';
 
 interface Props {
   events: SchoolEvent[];
+  isAdmin: boolean;
+  loadedFromCache: boolean;
   onLogoutClick: () => void;
 }
 
-export function AppHeader({ onLogoutClick }: Props) {
-  const { user, loading: authLoading, signIn } = useAuth();
-  const { resolvedTheme, toggleTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
+export function AppHeader({ isAdmin, loadedFromCache, onLogoutClick }: Props) {
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-10 bg-[#fefefe]/80 backdrop-blur-md border-b border-[#e5e5e9]">
-      <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <img
-            src="/icons/icon-192x192.png"
-            alt=""
-            className="w-8 h-8 rounded-xl border border-[#E6E0E9] bg-[#fefefe] shadow-sm shrink-0"
-            aria-hidden="true"
-          />
-          <h1 className="text-lg font-medium tracking-tight text-[#1D1B20] truncate">Muralize</h1>
-        </div>
+    <>
+      <header className="sticky top-0 z-30 border-b border-[var(--app-border-soft)] bg-[#fefefe]/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <img
+              src="/icons/icon-192x192.png"
+              alt=""
+              className="h-9 w-9 shrink-0 rounded-2xl border border-[var(--app-border)] bg-[#fefefe] shadow-sm"
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold tracking-tight text-[var(--app-text)]">Muralize</h1>
+              <div className="mt-0.5 flex items-center gap-2 text-xs text-[var(--app-text-muted)]">
+                {isAdmin ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--app-surface-soft)] px-2 py-0.5">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Admin
+                  </span>
+                ) : (
+                  <span>Mural público</span>
+                )}
+                {loadedFromCache && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">
+                    <WifiOff className="h-3.5 w-3.5" />
+                    Offline
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
 
-        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={toggleTheme}
-            className="p-2 text-[#49454F] hover:bg-[#F4EFF4] rounded-full transition-colors"
-            title={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'}
-            aria-label={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'}
+            onClick={() => setIsDrawerOpen(true)}
+            className="rounded-full p-2 text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-soft)]"
+            title="Abrir menu"
+            aria-label="Abrir menu"
           >
-            {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            <Menu className="h-6 w-6" />
           </button>
-
-          <InstallPwaButton />
-          <PushNotificationButton />
-
-          {authLoading ? null : user ? (
-            <button
-              type="button"
-              onClick={onLogoutClick}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#49454F] hover:bg-[#F4EFF4] rounded-full transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Sair</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={signIn}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-[#ECE6F0] text-[#1D1B20] hover:bg-[#E2DCE6] rounded-full transition-colors"
-            >
-              <LogIn className="w-4 h-4" />
-              Admin
-            </button>
-          )}
         </div>
-      </div>
-    </header>
+      </header>
+
+      <AnimatePresence>
+        {isDrawerOpen && (
+          <SettingsDrawer
+            isOpen={isDrawerOpen}
+            isAdmin={isAdmin}
+            loadedFromCache={loadedFromCache}
+            onClose={() => setIsDrawerOpen(false)}
+            onLogoutClick={onLogoutClick}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }

@@ -13,16 +13,22 @@ export function BaseModal({ children, onClose }: Props) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="fixed inset-0 bg-[#1D1B20]/40 backdrop-blur-sm z-40"
+        className="fixed inset-0 bg-[var(--app-overlay)] backdrop-blur-sm z-40"
       />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 20 }}
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-[28px] shadow-2xl z-50 p-6"
-      >
-        {children}
-      </motion.div>
+      <div className="fixed inset-x-0 bottom-0 z-50 sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100%-2rem)] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2">
+        <motion.div
+          role="dialog"
+          aria-modal="true"
+          initial={{ opacity: 0, y: 42, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 42, scale: 0.98 }}
+          transition={{ type: 'spring', stiffness: 340, damping: 32 }}
+          className="max-h-[92dvh] overflow-y-auto rounded-t-[32px] bg-[var(--app-surface)] p-6 shadow-[var(--app-shadow)] sm:rounded-[28px]"
+        >
+          <div className="mx-auto mb-4 h-1.5 w-11 rounded-full bg-[var(--app-border)] sm:hidden" />
+          {children}
+        </motion.div>
+      </div>
     </>
   );
 }

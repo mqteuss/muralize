@@ -26,6 +26,7 @@ import { EventFilters, EventFilterType } from '@/components/events/EventFilters'
 import { EventSearch } from '@/components/events/EventSearch';
 import { EventFormModal, EventFormPayload } from '@/components/events/EventFormModal';
 import { EventHistoryModal } from '@/components/events/EventHistoryModal';
+import { EventActionsSheet } from '@/components/events/EventActionsSheet';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 import { SkeletonCard } from '@/components/ui/SkeletonCard';
@@ -46,6 +47,7 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<SchoolEvent | null>(null);
   const [eventToDelete, setEventToDelete] = useState<SchoolEvent | null>(null);
+  const [actionEvent, setActionEvent] = useState<SchoolEvent | null>(null);
   const [historyEvent, setHistoryEvent] = useState<SchoolEvent | null>(null);
   const [historyItems, setHistoryItems] = useState<EventHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -132,6 +134,8 @@ export default function Home() {
       if (filterType === 'trash') return Boolean(event.deletedAt);
       if (event.deletedAt) return false;
       if (filterType === 'hidden') return !event.isPublic;
+      if (filterType === 'pinned') return event.isPinned;
+      if (filterType === 'urgent') return event.priority === 'urgente';
       if (filterType === 'past') return isPast(event.date);
       if (filterType !== 'all' && isPast(event.date)) return false;
       if (filterType === 'today') return isToday(event.date);
@@ -275,7 +279,12 @@ export default function Home() {
 
   return (
     <div className="min-h-screen pb-24 relative">
-      <AppHeader events={events} onLogoutClick={() => setIsLogoutModalOpen(true)} />
+      <AppHeader
+        events={events}
+        isAdmin={isAdmin}
+        loadedFromCache={loadedFromCache}
+        onLogoutClick={() => setIsLogoutModalOpen(true)}
+      />
 
       <AnimatePresence>
         {successMsg && (
@@ -347,12 +356,7 @@ export default function Home() {
                   key={event.id}
                   event={event}
                   isAdmin={isAdmin}
-                  onDeleteClick={setEventToDelete}
-                  onEditClick={openEditModal}
-                  onDuplicateClick={handleDuplicateEvent}
-                  onHistoryClick={handleHistoryEvent}
-                  onRestoreClick={handleRestoreEvent}
-                  onShareClick={handleShareEvent}
+                  onActionsClick={setActionEvent}
                 />
               ))}
             </AnimatePresence>
@@ -370,6 +374,22 @@ export default function Home() {
             errorMsg={errorMsg}
             onClose={() => setIsModalOpen(false)}
             onSubmit={handleSubmit}
+          />
+        )}
+
+
+
+        {actionEvent && (
+          <EventActionsSheet
+            event={actionEvent}
+            isAdmin={isAdmin}
+            onClose={() => setActionEvent(null)}
+            onDeleteClick={setEventToDelete}
+            onEditClick={openEditModal}
+            onDuplicateClick={handleDuplicateEvent}
+            onHistoryClick={handleHistoryEvent}
+            onRestoreClick={handleRestoreEvent}
+            onShareClick={handleShareEvent}
           />
         )}
 
@@ -406,26 +426,7 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      <style jsx global>{`
-        .field {
-          width: 100%;
-          border-radius: 16px;
-          background: #F4EFF4;
-          padding: 12px 14px;
-          outline: none;
-          border: 1px solid transparent;
-          color: #1D1B20;
-        }
-        .field:focus {
-          border-color: #1D1B20;
-        }
-        .form-label {
-          display: block;
-          font-size: 0.875rem;
-          font-weight: 500;
-          color: #49454F;
-        }
-      `}</style>
+
     </div>
   );
 }
