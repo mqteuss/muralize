@@ -35,14 +35,19 @@ export function EventCard({ event, isAdmin, onActionsClick, onDetailsClick, view
       ? 'text-amber-800 bg-amber-100'
       : 'text-[#49454F] bg-[#E6E0E9]';
 
-  function handleCardClick() {
-    onDetailsClick?.(event);
+  function openDetails() {
+    if (onDetailsClick) {
+      onDetailsClick(event);
+      return;
+    }
+
+    onActionsClick(event);
   }
 
   function handleCardKeyDown(eventKey: React.KeyboardEvent<HTMLElement>) {
     if (eventKey.key === 'Enter' || eventKey.key === ' ') {
       eventKey.preventDefault();
-      handleCardClick();
+      openDetails();
     }
   }
 
@@ -54,7 +59,7 @@ export function EventCard({ event, isAdmin, onActionsClick, onDetailsClick, view
       initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
-      onClick={handleCardClick}
+      onClick={openDetails}
       onKeyDown={handleCardKeyDown}
       className={`group relative flex cursor-pointer flex-col justify-between rounded-3xl border transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--app-primary)] ${
         isCompact ? 'min-h-[168px] p-3.5 sm:min-h-0 sm:p-5' : 'p-5'
