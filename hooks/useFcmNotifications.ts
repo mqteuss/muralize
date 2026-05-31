@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getMessaging, getToken, isSupported } from 'firebase/messaging';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
 import { app, db } from '@/lib/firebase';
 
@@ -10,6 +10,7 @@ type PushStatus = 'checking' | 'unsupported' | 'missing-key' | 'default' | 'load
 
 const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
 const TOKEN_CACHE_KEY = 'muralize_fcm_token';
+const TOKEN_HASH_CACHE_KEY = 'muralize_fcm_token_hash';
 const LAST_SYNC_CACHE_KEY = 'muralize_fcm_last_sync';
 
 async function hashToken(token: string) {
@@ -35,40 +36,54 @@ function getErrorMessage(error: unknown) {
   return 'Não foi possível ativar as notificações.';
 }
 
+function removeLegacyTokenCache() {
+  try {
+    localStorage.removeItem(TOKEN_CACHE_KEY);
+  } catch {
+    // Ignora ambientes sem storage disponível.
+  }
+}
+
 export function useFcmNotifications() {
   const { user } = useAuth();
   const [status, setStatus] = useState<PushStatus>('checking');
-  const [token, setToken] = useState<string | null>(null);
+  const [tokenHash, setTokenHash] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const syncInFlightRef = useRef(false);
 
   const saveToken = useCallback(async (fcmToken: string) => {
-    const tokenHash = await hashToken(fcmToken);
-    const now = Timestamp.now();
+    const nextTokenHash = await hashToken(fcmToken);
+    const subscriptionRef = doc(db, 'notificationSubscriptions', nextTokenHash);
+    const existingSubscription = await getDoc(subscriptionRef).catch(() => null);
 
     const payload: Record<string, unknown> = {
       token: fcmToken,
+      tokenHash: nextTokenHash,
       userAgent: navigator.userAgent.slice(0, 300),
       permission: 'granted',
-      updatedAt: now,
-      createdAt: now,
+      updatedAt: serverTimestamp(),
     };
+
+    if (!existingSubscription?.exists()) {
+      payload.createdAt = serverTimestamp();
+    }
 
     if (user?.uid) payload.uid = user.uid;
     if (user?.email) payload.email = user.email;
 
-    await setDoc(doc(db, 'notificationSubscriptions', tokenHash), payload, { merge: true });
+    await setDoc(subscriptionRef, payload, { merge: true });
 
     const syncDate = new Date().toISOString();
-    localStorage.setItem(TOKEN_CACHE_KEY, fcmToken);
+    removeLegacyTokenCache();
+    localStorage.setItem(TOKEN_HASH_CACHE_KEY, nextTokenHash);
     localStorage.setItem(LAST_SYNC_CACHE_KEY, syncDate);
-    setToken(fcmToken);
+    setTokenHash(nextTokenHash);
     setLastSyncedAt(syncDate);
   }, [user?.email, user?.uid]);
 
   const syncToken = useCallback(async () => {
-    if (syncInFlightRef.current) return token;
+    if (syncInFlightRef.current) return tokenHash;
     syncInFlightRef.current = true;
 
     try {
@@ -105,7 +120,7 @@ export function useFcmNotifications() {
 
       await saveToken(fcmToken);
       setStatus('granted');
-      return fcmToken;
+      return await hashToken(fcmToken);
     } catch (error) {
       console.error('Erro ao sincronizar push notifications.', error);
       setErrorMessage(getErrorMessage(error));
@@ -114,16 +129,18 @@ export function useFcmNotifications() {
     } finally {
       syncInFlightRef.current = false;
     }
-  }, [saveToken, token]);
+  }, [saveToken, tokenHash]);
 
   useEffect(() => {
     let mounted = true;
 
     async function checkSupportAndSync() {
-      const cachedToken = localStorage.getItem(TOKEN_CACHE_KEY);
+      removeLegacyTokenCache();
+
+      const cachedHash = localStorage.getItem(TOKEN_HASH_CACHE_KEY);
       const cachedSync = localStorage.getItem(LAST_SYNC_CACHE_KEY);
 
-      if (cachedToken && mounted) setToken(cachedToken);
+      if (cachedHash && mounted) setTokenHash(cachedHash);
       if (cachedSync && mounted) setLastSyncedAt(cachedSync);
 
       const supported = await isPushSupported();
@@ -201,7 +218,8 @@ export function useFcmNotifications() {
 
   return {
     status,
-    token,
+    token: tokenHash,
+    tokenHash,
     errorMessage,
     lastSyncedAt,
     requestPushPermission,
