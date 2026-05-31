@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signOut as firebaseSignOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
+import { clearCachedEvents } from '@/lib/eventCache';
 
 interface AuthContextType {
   user: User | null;
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     if (!auth) return;
     try {
+      clearCachedEvents();
       await firebaseSignOut(auth);
     } catch (error) {
       console.error('Error signing out', error);
