@@ -22,34 +22,64 @@ interface SwipeGestureState {
   active: boolean;
 }
 
+const calmSpring = {
+  type: 'spring' as const,
+  stiffness: 280,
+  damping: 34,
+  mass: 0.92,
+};
+
+const settleSpring = {
+  type: 'spring' as const,
+  stiffness: 520,
+  damping: 44,
+  mass: 0.62,
+};
+
 export function SideDrawer({ title, description, side = 'right', children, onClose }: Props) {
   const x = useMotionValue(0);
   const [dragLimit, setDragLimit] = useState(420);
   const closeOnceRef = useRef(false);
   const swipeGestureRef = useRef<SwipeGestureState | null>(null);
-  const fromX = side === 'right' ? '100%' : '-100%';
+  const hiddenX = side === 'right' ? dragLimit : -dragLimit;
   const sideClass = side === 'right' ? 'right-0' : 'left-0';
   const roundedClass = side === 'right' ? 'rounded-l-[32px]' : 'rounded-r-[32px]';
 
   useBodyScrollLock(true);
 
   useEffect(() => {
-    x.set(0);
-
     const updateLimit = () => setDragLimit(Math.max(280, Math.min(window.innerWidth * 0.9, 520)));
     updateLimit();
     window.addEventListener('resize', updateLimit);
     return () => window.removeEventListener('resize', updateLimit);
-  }, [x]);
+  }, []);
+
+  useEffect(() => {
+    const initialHiddenX = side === 'right' ? dragLimit : -dragLimit;
+    x.set(initialHiddenX);
+    const frame = window.requestAnimationFrame(() => {
+      animate(x, 0, calmSpring);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [dragLimit, side, x]);
 
   function requestClose() {
     if (closeOnceRef.current) return;
     closeOnceRef.current = true;
-    onClose();
+
+    animate(x, hiddenX, {
+      type: 'spring',
+      stiffness: 340,
+      damping: 38,
+      mass: 0.82,
+    });
+
+    window.setTimeout(onClose, 230);
   }
 
   function resetPosition() {
-    animate(x, 0, { type: 'spring', stiffness: 640, damping: 48, mass: 0.55 });
+    animate(x, 0, settleSpring);
   }
 
   function beginSwipe(clientX: number, clientY: number) {
@@ -120,7 +150,7 @@ export function SideDrawer({ title, description, side = 'right', children, onClo
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.12, ease: 'easeOut' }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
         onClick={requestClose}
         className="fixed inset-0 z-40 bg-[var(--app-overlay)]"
         style={{ overscrollBehavior: 'none', touchAction: 'none' }}
@@ -129,10 +159,6 @@ export function SideDrawer({ title, description, side = 'right', children, onClo
         role="dialog"
         aria-modal="true"
         aria-labelledby="side-drawer-title"
-        initial={{ x: fromX }}
-        animate={{ x: 0 }}
-        exit={{ x: fromX }}
-        transition={{ type: 'spring', stiffness: 620, damping: 50, mass: 0.58 }}
         className={`fixed top-0 ${sideClass} z-50 flex h-dvh w-[min(88vw,390px)] transform-gpu flex-col bg-[var(--app-surface)] shadow-[var(--app-shadow)] will-change-transform ${roundedClass}`}
         style={{ x, backfaceVisibility: 'hidden', contain: 'layout paint', overscrollBehavior: 'contain' }}
       >
