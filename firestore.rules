@@ -83,8 +83,18 @@ service cloud.firestore {
       data.title.size() <= 120;
     }
 
+    function signedSubscriptionEmailIsValid(data) {
+      return !('email' in data) ||
+        data.email == null ||
+        (request.auth.token.email is string && data.email == request.auth.token.email);
+    }
+
     function subscriptionOwnerIsValid(data) {
-      return !isSignedIn() || !('uid' in data) || data.uid == request.auth.uid;
+      return isSignedIn()
+        ? (!('uid' in data) || data.uid == null || data.uid == request.auth.uid) &&
+          signedSubscriptionEmailIsValid(data)
+        : (!('uid' in data) || data.uid == null) &&
+          (!('email' in data) || data.email == null);
     }
 
     function isValidSubscription(data, subscriptionId) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Timestamp } from 'firebase-admin/firestore';
-import { adminAuth, adminDb, adminMessaging } from '@/lib/firebaseAdmin';
+import { getAdminAuth, getAdminDb, getAdminMessaging } from '@/lib/firebaseAdmin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,6 +36,13 @@ interface DirectRequestBody {
 
 type RequestBody = LegacyRequestBody & DirectRequestBody;
 
+const MAX_BODY_BYTES = 16 * 1024;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX_BY_IP = 40;
+const RATE_LIMIT_MAX_BY_UID = 20;
+const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
+const notificationTypes = new Set<NotificationType>(['created', 'published', 'priority_up', 'rescheduled']);
+
 function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status });
 }
@@ -44,6 +51,53 @@ function getBearerToken(request: NextRequest) {
   const header = request.headers.get('authorization') || '';
   if (!header.startsWith('Bearer ')) return null;
   return header.slice('Bearer '.length).trim();
+}
+
+function getClientIp(request: NextRequest) {
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) return forwardedFor.split(',')[0].trim();
+  return request.headers.get('x-real-ip') || 'unknown';
+}
+
+function consumeRateLimit(key: string, limit: number) {
+  const now = Date.now();
+  const existing = rateLimitBuckets.get(key);
+
+  if (!existing || existing.resetAt <= now) {
+    rateLimitBuckets.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+
+  if (existing.count >= limit) return false;
+
+  existing.count += 1;
+  return true;
+}
+
+function cleanupRateLimitBuckets() {
+  const now = Date.now();
+  for (const [key, bucket] of rateLimitBuckets.entries()) {
+    if (bucket.resetAt <= now) rateLimitBuckets.delete(key);
+  }
+}
+
+async function readRequestBody(request: NextRequest): Promise<RequestBody> {
+  const raw = await request.text();
+  const bytes = new TextEncoder().encode(raw).byteLength;
+
+  if (bytes > MAX_BODY_BYTES) {
+    throw Object.assign(new Error('payload_too_large'), { status: 413 });
+  }
+
+  try {
+    return JSON.parse(raw || '{}') as RequestBody;
+  } catch {
+    throw Object.assign(new Error('invalid_json'), { status: 400 });
+  }
+}
+
+function isNotificationType(value: unknown): value is NotificationType {
+  return typeof value === 'string' && notificationTypes.has(value as NotificationType);
 }
 
 function normalizeDate(value: unknown): Date | null {
@@ -85,6 +139,15 @@ function normalizePriority(value: unknown): Priority {
   return 'normal';
 }
 
+function safeLogId(value: string) {
+  const safe = value.replace(/[^a-zA-Z0-9_.:-]/g, '_').slice(0, 180);
+  return safe || `notification-${Date.now()}`;
+}
+
+function chooseLogId(dedupeKey: string | undefined, fallback: string) {
+  return safeLogId(dedupeKey || fallback);
+}
+
 function normalizeEventFromFirestore(id: string, data: Record<string, unknown>): EventSnapshot {
   return {
     id,
@@ -112,7 +175,7 @@ function notificationFromType(type: NotificationType, event: EventSnapshot, dedu
   if (type === 'created') {
     return {
       reason: 'created',
-      logId: dedupeKey || `created-${event.id}`,
+      logId: chooseLogId(dedupeKey, `created-${event.id}`),
       title: 'Novo evento no Muralize',
       body: `${title}${formattedDate ? ` • ${formattedDate}` : ''}`,
     };
@@ -121,7 +184,7 @@ function notificationFromType(type: NotificationType, event: EventSnapshot, dedu
   if (type === 'published') {
     return {
       reason: 'published',
-      logId: dedupeKey || `published-${event.id}-${toMillis(event.date)}`,
+      logId: chooseLogId(dedupeKey, `published-${event.id}-${toMillis(event.date)}`),
       title: 'Evento publicado no Muralize',
       body: `${title}${formattedDate ? ` • ${formattedDate}` : ''}`,
     };
@@ -130,7 +193,7 @@ function notificationFromType(type: NotificationType, event: EventSnapshot, dedu
   if (type === 'priority_up') {
     return {
       reason: 'priority',
-      logId: dedupeKey || `priority-${event.id}-${priority}-${toMillis(event.date)}`,
+      logId: chooseLogId(dedupeKey, `priority-${event.id}-${priority}-${toMillis(event.date)}`),
       title: priority === 'urgente' ? 'Evento urgente no Muralize' : 'Evento importante no Muralize',
       body: `${title}: ${description}`,
     };
@@ -139,7 +202,7 @@ function notificationFromType(type: NotificationType, event: EventSnapshot, dedu
   if (type === 'rescheduled') {
     return {
       reason: 'rescheduled',
-      logId: dedupeKey || `rescheduled-${event.id}-${toMillis(event.date)}`,
+      logId: chooseLogId(dedupeKey, `rescheduled-${event.id}-${toMillis(event.date)}`),
       title: 'Evento atualizado no Muralize',
       body: `${title}${formattedDate ? ` agora está para ${formattedDate}.` : ' teve a data alterada.'}`,
     };
@@ -171,12 +234,12 @@ function inferNotificationFromLegacy(action: LegacyAction, event: EventSnapshot,
 }
 
 async function assertAdmin(uid: string) {
-  const adminDoc = await adminDb.collection('admins').doc(uid).get();
+  const adminDoc = await getAdminDb().collection('admins').doc(uid).get();
   return adminDoc.exists;
 }
 
 async function getSubscriptions() {
-  const snapshot = await adminDb
+  const snapshot = await getAdminDb()
     .collection('notificationSubscriptions')
     .where('permission', '==', 'granted')
     .limit(500)
@@ -195,7 +258,7 @@ async function getSubscriptions() {
 }
 
 async function createNotificationLog(logId: string, data: Record<string, unknown>) {
-  const ref = adminDb.collection('notificationLogs').doc(logId);
+  const ref = getAdminDb().collection('notificationLogs').doc(logId);
   const existing = await ref.get();
 
   if (existing.exists) return false;
@@ -209,10 +272,31 @@ async function createNotificationLog(logId: string, data: Record<string, unknown
 }
 
 async function updateNotificationLog(logId: string, data: Record<string, unknown>) {
-  await adminDb.collection('notificationLogs').doc(logId).set({
+  await getAdminDb().collection('notificationLogs').doc(logId).set({
     ...data,
     updatedAt: Timestamp.now(),
   }, { merge: true });
+}
+
+async function loadEventForNotification(eventId: string) {
+  if (!eventId || eventId.length > 128 || eventId.includes('/')) return null;
+
+  const eventDocument = await getAdminDb().collection('events').doc(eventId).get();
+  if (!eventDocument.exists) return null;
+  return normalizeEventFromFirestore(eventDocument.id, eventDocument.data());
+}
+
+function getSafeAppUrl(request: NextRequest) {
+  const fallback = request.nextUrl.origin;
+  const configured = process.env.MURALIZE_APP_URL || fallback;
+
+  try {
+    const url = new URL(configured);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return fallback;
+    return url.origin;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function GET() {
@@ -223,26 +307,38 @@ export async function POST(request: NextRequest) {
   let logId: string | null = null;
 
   try {
+    cleanupRateLimitBuckets();
+
+    const ip = getClientIp(request);
+    if (!consumeRateLimit(`ip:${ip}`, RATE_LIMIT_MAX_BY_IP)) {
+      return json({ ok: false, error: 'rate_limited' }, 429);
+    }
+
     const token = getBearerToken(request);
 
     if (!token) return json({ ok: false, error: 'missing_auth_token' }, 401);
 
-    const decodedToken = await adminAuth.verifyIdToken(token);
+    const decodedToken = await getAdminAuth().verifyIdToken(token);
+
+    if (!consumeRateLimit(`uid:${decodedToken.uid}`, RATE_LIMIT_MAX_BY_UID)) {
+      return json({ ok: false, error: 'rate_limited' }, 429);
+    }
+
     const admin = await assertAdmin(decodedToken.uid);
 
     if (!admin) return json({ ok: false, error: 'not_admin' }, 403);
 
-    const body = (await request.json()) as RequestBody;
+    const body = await readRequestBody(request);
     let event: EventSnapshot | null = null;
     let notification: ReturnType<typeof notificationFromType> | null = null;
 
-    if (body.type && body.event?.id) {
-      event = body.event;
+    if (isNotificationType(body.type) && body.event?.id) {
+      event = await loadEventForNotification(body.event.id);
+      if (!event) return json({ ok: false, error: 'event_not_found' }, 404);
       notification = notificationFromType(body.type, event, body.dedupeKey);
     } else if (body.eventId && (body.action === 'created' || body.action === 'updated')) {
-      const eventDocument = await adminDb.collection('events').doc(body.eventId).get();
-      if (!eventDocument.exists) return json({ ok: false, error: 'event_not_found' }, 404);
-      event = normalizeEventFromFirestore(eventDocument.id, eventDocument.data());
+      event = await loadEventForNotification(body.eventId);
+      if (!event) return json({ ok: false, error: 'event_not_found' }, 404);
       notification = inferNotificationFromLegacy(body.action, event, body.previousEvent);
     } else {
       return json({ ok: false, error: 'invalid_payload' }, 400);
@@ -274,11 +370,11 @@ export async function POST(request: NextRequest) {
       return json({ ok: true, sent: 0, reason: 'no_tokens' });
     }
 
-    const appUrl = process.env.MURALIZE_APP_URL || request.nextUrl.origin;
+    const appUrl = getSafeAppUrl(request);
     const tokens = subscriptions.map(subscription => subscription.token);
     const priority = normalizePriority(event.priority);
 
-    const result = await adminMessaging.sendEachForMulticast({
+    const result = await getAdminMessaging().sendEachForMulticast({
       tokens,
       notification: {
         title: notification.title,
@@ -312,7 +408,7 @@ export async function POST(request: NextRequest) {
 
     result.responses.forEach((response, index) => {
       if (!response.success && response.error && invalidCodes.has(response.error.code)) {
-        deletions.push(adminDb.collection('notificationSubscriptions').doc(subscriptions[index].id).delete());
+        deletions.push(getAdminDb().collection('notificationSubscriptions').doc(subscriptions[index].id).delete());
       }
     });
 
@@ -337,18 +433,20 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Erro ao enviar notificação de evento:', error);
 
+    const status = typeof (error as any)?.status === 'number' ? (error as any).status : 500;
+    const publicError = status === 413 ? 'payload_too_large' : status === 400 ? 'invalid_json' : 'internal_error';
+
     if (logId) {
       await updateNotificationLog(logId, {
         status: 'failed',
-        error: error instanceof Error ? error.message : String(error),
+        error: publicError,
         finishedAt: Timestamp.now(),
       }).catch(() => null);
     }
 
     return json({
       ok: false,
-      error: 'internal_error',
-      message: error instanceof Error ? error.message : String(error),
-    }, 500);
+      error: publicError,
+    }, status);
   }
 }

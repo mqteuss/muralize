@@ -11,10 +11,10 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "firebase": "^11.3.1",
-    "firebase-admin": "^12.7.0",
+    "firebase-admin": "^13.10.0",
     "lucide-react": "^0.553.0",
     "motion": "^12.23.24",
-    "next": "^15.4.10",
+    "next": "^16.2.6",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "tailwind-merge": "^3.3.1"
@@ -25,6 +25,15 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tailwindcss": "4.1.11",
+    "postcss": "8.5.15",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "@google-cloud/firestore": "8.6.0",
+    "google-gax": "5.0.6",
+    "postcss": "8.5.15",
+    "retry-request": "8.0.2",
+    "teeny-request": "10.1.2",
+    "uuid": "11.1.1"
   }
 }

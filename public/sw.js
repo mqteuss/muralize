@@ -94,6 +94,7 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstNavigation(request));
@@ -148,7 +149,10 @@ self.addEventListener('notificationclick', event => {
   event.notification.close();
 
   const targetUrl = event.notification.data?.url || '/';
-  const absoluteUrl = new URL(targetUrl, self.location.origin).href;
+  const parsedUrl = new URL(targetUrl, self.location.origin);
+  const absoluteUrl = parsedUrl.origin === self.location.origin
+    ? parsedUrl.href
+    : self.location.origin;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {

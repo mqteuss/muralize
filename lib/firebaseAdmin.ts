@@ -1,4 +1,4 @@
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { cert, getApps, initializeApp, type App } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
@@ -23,12 +23,28 @@ function getServiceAccount() {
   }
 }
 
-const adminApp = getApps().length
-  ? getApps()[0]
-  : initializeApp({
-      credential: cert(getServiceAccount()),
-    });
+let adminApp: App | null = null;
 
-export const adminAuth = getAuth(adminApp);
-export const adminDb = getFirestore(adminApp);
-export const adminMessaging = getMessaging(adminApp);
+function getAdminApp() {
+  if (adminApp) return adminApp;
+
+  adminApp = getApps().length
+    ? getApps()[0]
+    : initializeApp({
+        credential: cert(getServiceAccount()),
+      });
+
+  return adminApp;
+}
+
+export function getAdminAuth() {
+  return getAuth(getAdminApp());
+}
+
+export function getAdminDb() {
+  return getFirestore(getAdminApp());
+}
+
+export function getAdminMessaging() {
+  return getMessaging(getAdminApp());
+}
