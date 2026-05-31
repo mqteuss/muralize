@@ -8,6 +8,7 @@ interface Props {
   event: SchoolEvent;
   isAdmin: boolean;
   onActionsClick: (event: SchoolEvent) => void;
+  viewMode?: 'grid' | 'list';
 }
 
 const priorityLabel: Record<SchoolEvent['priority'], string> = {
@@ -16,7 +17,9 @@ const priorityLabel: Record<SchoolEvent['priority'], string> = {
   urgente: 'Urgente',
 };
 
-export function EventCard({ event, isAdmin, onActionsClick }: Props) {
+export function EventCard({ event, isAdmin, onActionsClick, viewMode = 'list' }: Props) {
+  const isCompact = viewMode === 'grid';
+
   const getRelativeTimeText = (date: Date) => {
     if (event.deletedAt) return 'Na lixeira';
     if (isPast(date)) return 'Finalizado';
@@ -34,10 +37,12 @@ export function EventCard({ event, isAdmin, onActionsClick }: Props) {
   return (
     <motion.article
       layout
-      initial={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className={`group relative flex flex-col justify-between rounded-3xl border p-5 transition-colors ${
+      exit={{ opacity: 0, scale: 0.96 }}
+      className={`group relative flex flex-col justify-between rounded-3xl border transition-colors ${
+        isCompact ? 'min-h-[168px] p-3.5 sm:min-h-0 sm:p-5' : 'p-5'
+      } ${
         event.deletedAt
           ? 'border-red-200 bg-red-50/50 hover:bg-red-50'
           : event.isPinned
@@ -48,18 +53,24 @@ export function EventCard({ event, isAdmin, onActionsClick }: Props) {
       <button
         type="button"
         onClick={() => onActionsClick(event)}
-        className="absolute right-4 top-4 rounded-full p-2 text-[#49454F] transition-colors hover:bg-[#E6E0E9]"
+        className={`absolute rounded-full text-[#49454F] transition-colors hover:bg-[#E6E0E9] ${
+          isCompact ? 'right-2.5 top-2.5 p-1.5 sm:right-4 sm:top-4 sm:p-2' : 'right-4 top-4 p-2'
+        }`}
         title="Ações do evento"
         aria-label="Ações do evento"
       >
-        <MoreVertical className="h-5 w-5" />
+        <MoreVertical className={isCompact ? 'h-4 w-4 sm:h-5 sm:w-5' : 'h-5 w-5'} />
       </button>
 
-      <div className="pr-12">
-        <div className="mb-2 flex items-start justify-between gap-4">
+      <div className={isCompact ? 'pr-7 sm:pr-12' : 'pr-12'}>
+        <div className={`mb-2 flex items-start justify-between gap-3 ${isCompact ? 'flex-col sm:flex-row' : ''}`}>
           <div className="flex min-w-0 items-start gap-2">
             {event.isPinned && <Pin className="mt-0.5 h-4 w-4 shrink-0 text-[#6750A4]" />}
-            <h3 className="break-words text-base font-semibold leading-snug text-[#1D1B20]">{event.title}</h3>
+            <h3 className={`break-words font-semibold leading-snug text-[#1D1B20] ${
+              isCompact ? 'line-clamp-3 text-sm sm:text-base' : 'text-base'
+            }`}>
+              {event.title}
+            </h3>
           </div>
           <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${isPast(event.date) || event.deletedAt ? 'bg-[#E6E0E9] text-[#49454F]' : 'bg-[#1D1B20] text-[#fefefe]'}`}>
             {getRelativeTimeText(event.date)}
@@ -89,14 +100,18 @@ export function EventCard({ event, isAdmin, onActionsClick }: Props) {
         </div>
 
         {event.description && (
-          <p className="mb-4 line-clamp-3 break-words text-sm text-[#49454F]">
+          <p className={`mb-4 break-words text-sm text-[#49454F] ${
+            isCompact ? 'hidden sm:line-clamp-3 sm:block' : 'line-clamp-3'
+          }`}>
             {event.description}
           </p>
         )}
 
-        <div className="flex items-center gap-2 text-sm text-[#49454F]">
-          <Calendar className="h-4 w-4 opacity-70" />
-          <span>{format(event.date, "dd 'de' MMMM, HH:mm", { locale: ptBR })}</span>
+        <div className={`flex items-center gap-2 text-[#49454F] ${isCompact ? 'text-xs sm:text-sm' : 'text-sm'}`}>
+          <Calendar className="h-4 w-4 shrink-0 opacity-70" />
+          <span className={isCompact ? 'line-clamp-2 sm:line-clamp-none' : ''}>
+            {format(event.date, "dd 'de' MMMM, HH:mm", { locale: ptBR })}
+          </span>
         </div>
       </div>
     </motion.article>
